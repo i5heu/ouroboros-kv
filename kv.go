@@ -73,8 +73,18 @@ func Init(crypt *crypt.Crypt, config *StoreConfig) (*KV, error) {
 
 	opts := badger.DefaultOptions(config.Paths[0])
 	opts.Logger = nil
-	opts.ValueLogFileSize = 1024 * 1024 * 100 // Set max size of each value log file to 100MB
+	opts.ValueLogFileSize = 1024 * 1024 * 500 // Increase to 500MB per value log file
 	opts.SyncWrites = false
+
+	// Increase limits for handling very large files
+	opts.BaseTableSize = 128 << 20    // 128MB (default is 2MB)
+	opts.LevelSizeMultiplier = 10     // Default is 10
+	opts.MaxLevels = 7                // Default is 7
+	opts.ValueThreshold = 512         // Store values larger than 512B in value log (smaller threshold)
+	opts.NumMemtables = 8             // Increase to 8 (default is 5)
+	opts.MemTableSize = 128 << 20     // 128MB per memtable (default is 64MB)
+	opts.NumLevelZeroTables = 8       // Increase to 8 (default is 5)
+	opts.NumLevelZeroTablesStall = 20 // Increase to 20 (default is 15)
 
 	db, err := badger.Open(opts)
 	if err != nil {

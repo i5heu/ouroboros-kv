@@ -46,30 +46,31 @@ func (k *KV) WriteData(data Data) error {
 		Children:    encoded.Children,
 	}
 
-	// Use a batch write for atomic operations
-	err = k.badgerDB.Update(func(txn *badger.Txn) error {
-		// Store metadata
-		err := k.storeMetadata(txn, metadata)
-		if err != nil {
-			return fmt.Errorf("failed to store metadata: %w", err)
-		}
+	// Use WriteBatch for better handling of large transactions
+	wb := k.badgerDB.NewWriteBatch()
+	defer wb.Cancel()
 
-		// Store all chunks
-		for _, chunks := range chunkMap {
-			for _, chunk := range chunks {
-				err := k.storeChunk(txn, chunk)
-				if err != nil {
-					return fmt.Errorf("failed to store chunk: %w", err)
-				}
+	// Store metadata
+	err = k.storeMetadataWithBatch(wb, metadata)
+	if err != nil {
+		return fmt.Errorf("failed to store metadata: %w", err)
+	}
+
+	// Store all chunks
+	for _, chunks := range chunkMap {
+		for _, chunk := range chunks {
+			err := k.storeChunkWithBatch(wb, chunk)
+			if err != nil {
+				return fmt.Errorf("failed to store chunk: %w", err)
 			}
 		}
+	}
 
-		return nil
-	})
-
+	// Commit the batch
+	err = wb.Flush()
 	if err != nil {
 		log.Errorf("Failed to write data: %v", err)
-		return fmt.Errorf("failed to write data to store: %w", err)
+		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
 	log.Debugf("Successfully wrote data with key %x", data.Key)
@@ -133,6 +134,65 @@ func (k *KV) storeChunk(txn *badger.Txn, chunk KvContentChunk) error {
 	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
 
 	return txn.Set([]byte(key), data)
+}
+
+// storeMetadataWithBatch serializes and stores KvDataHash metadata using WriteBatch
+func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata KvDataHash) error {
+	// Convert to protobuf
+	protoMetadata := &pb.KvDataHashProto{
+		Key:    metadata.Key[:],
+		Parent: metadata.Parent[:],
+	}
+
+	// Convert chunk hashes
+	for _, chunkHash := range metadata.ChunkHashes {
+		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
+	}
+
+	// Convert children hashes
+	for _, child := range metadata.Children {
+		protoMetadata.Children = append(protoMetadata.Children, child[:])
+	}
+
+	// Serialize to protobuf
+	data, err := proto.Marshal(protoMetadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	// Create key with metadata prefix
+	key := fmt.Sprintf("%s%x", METADATA_PREFIX, metadata.Key)
+
+	return wb.Set([]byte(key), data)
+}
+
+// storeChunkWithBatch serializes and stores a KvContentChunk using WriteBatch
+func (k *KV) storeChunkWithBatch(wb *badger.WriteBatch, chunk KvContentChunk) error {
+	// Convert to protobuf
+	protoChunk := &pb.KvContentChunkProto{
+		ChunkHash:               chunk.ChunkHash[:],
+		EncodedHash:             chunk.EncodedHash[:],
+		ReedSolomonShards:       uint32(chunk.ReedSolomonShards),
+		ReedSolomonParityShards: uint32(chunk.ReedSolomonParityShards),
+		ReedSolomonIndex:        uint32(chunk.ReedSolomonIndex),
+		Size:                    chunk.Size,
+		OriginalSize:            chunk.OriginalSize,
+		EncapsulatedKey:         chunk.EncapsulatedKey,
+		Nonce:                   chunk.Nonce,
+		ChunkContent:            chunk.ChunkContent,
+	}
+
+	// Serialize to protobuf
+	data, err := proto.Marshal(protoChunk)
+	if err != nil {
+		return fmt.Errorf("failed to marshal chunk: %w", err)
+	}
+
+	// Create key with chunk prefix and unique identifier
+	// Use chunk hash + Reed-Solomon index to create unique keys for each shard
+	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
+
+	return wb.Set([]byte(key), data)
 }
 
 // BatchWriteData writes multiple Data objects in a single batch operation
