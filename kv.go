@@ -52,7 +52,8 @@ type KvContentChunk struct {
 	ReedSolomonShards       uint8     // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 	ReedSolomonParityShards uint8     // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 	ReedSolomonIndex        uint8     // Index of the chunk in the Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	Size                    uint64    // Size of the chunk in bytes
+	Size                    uint64    // Size of the shard in bytes
+	OriginalSize            uint64    // Size of the original encrypted chunk before Reed-Solomon encoding
 	EncapsulatedKey         []byte    // ML-KEM encapsulated secret for the chunk
 	Nonce                   []byte    // AES-GCM nonce for encryption
 	ChunkContent            []byte    // Content of the chunk after compression, encryption and erasure coding

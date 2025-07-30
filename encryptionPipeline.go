@@ -109,6 +109,7 @@ func (k *KV) reedSolomonSplitter(data Data, encryptedChunks []*encrypt.EncryptRe
 
 	var kvContentChunks []KvContentChunk
 	for i, encryptedChunk := range encryptedChunks {
+		originalSize := uint64(len(encryptedChunk.Ciphertext))
 		shards, err := enc.Split(encryptedChunk.Ciphertext)
 		if err != nil {
 			return nil, fmt.Errorf("error splitting encrypted chunk: %w", err)
@@ -126,6 +127,7 @@ func (k *KV) reedSolomonSplitter(data Data, encryptedChunks []*encrypt.EncryptRe
 				ReedSolomonParityShards: data.ReedSolomonParityShards,
 				ReedSolomonIndex:        uint8(j),
 				Size:                    uint64(len(shard)),
+				OriginalSize:            originalSize,
 				EncapsulatedKey:         encryptedChunk.EncapsulatedKey,
 				Nonce:                   encryptedChunk.Nonce,
 				ChunkContent:            shard,
