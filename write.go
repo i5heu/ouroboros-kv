@@ -12,8 +12,10 @@ import (
 
 const (
 	// Key prefixes for different data types in BadgerDB
-	METADATA_PREFIX = "meta:"  // For KvDataHash metadata
-	CHUNK_PREFIX    = "chunk:" // For KvContentChunk data
+	METADATA_PREFIX = "meta:"   // For KvDataHash metadata
+	CHUNK_PREFIX    = "chunk:"  // For KvContentChunk data
+	PARENT_PREFIX   = "parent:" // For parent relationships: parent_key -> child_key
+	CHILD_PREFIX    = "child:"  // For child relationships: child_key -> parent_key
 )
 
 // WriteData encodes and stores the given Data in the key-value store
@@ -54,6 +56,12 @@ func (k *KV) WriteData(data Data) error {
 	err = k.storeMetadataWithBatch(wb, metadata)
 	if err != nil {
 		return fmt.Errorf("failed to store metadata: %w", err)
+	}
+
+	// Store parent-child relationships
+	err = k.storeParentChildRelationships(wb, metadata.Key, metadata.Parent, metadata.Children)
+	if err != nil {
+		return fmt.Errorf("failed to store parent-child relationships: %w", err)
 	}
 
 	// Store all chunks
@@ -195,6 +203,53 @@ func (k *KV) storeChunkWithBatch(wb *badger.WriteBatch, chunk KvContentChunk) er
 	return wb.Set([]byte(key), data)
 }
 
+// storeParentChildRelationships stores bidirectional parent-child relationships in BadgerDB
+func (k *KV) storeParentChildRelationships(wb *badger.WriteBatch, dataKey, parent hash.Hash, children []hash.Hash) error {
+	// Store parent -> child relationship (if this data has a parent)
+	if !isEmptyHash(parent) {
+		// Store: parent:PARENT_HASH -> child:DATA_KEY
+		parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, parent, dataKey)
+		err := wb.Set([]byte(parentToChildKey), []byte(""))
+		if err != nil {
+			return fmt.Errorf("failed to store parent->child relationship: %w", err)
+		}
+
+		// Store: child:DATA_KEY -> parent:PARENT_HASH
+		childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, dataKey, parent)
+		err = wb.Set([]byte(childToParentKey), []byte(""))
+		if err != nil {
+			return fmt.Errorf("failed to store child->parent relationship: %w", err)
+		}
+	}
+
+	// Store child -> parent relationships (for each child this data has)
+	for _, child := range children {
+		if !isEmptyHash(child) {
+			// Store: parent:DATA_KEY -> child:CHILD_HASH
+			parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, dataKey, child)
+			err := wb.Set([]byte(parentToChildKey), []byte(""))
+			if err != nil {
+				return fmt.Errorf("failed to store parent->child relationship: %w", err)
+			}
+
+			// Store: child:CHILD_HASH -> parent:DATA_KEY
+			childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, child, dataKey)
+			err = wb.Set([]byte(childToParentKey), []byte(""))
+			if err != nil {
+				return fmt.Errorf("failed to store child->parent relationship: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// isEmptyHash checks if a hash is the zero value
+func isEmptyHash(h hash.Hash) bool {
+	var empty hash.Hash
+	return h == empty
+}
+
 // BatchWriteData writes multiple Data objects in a single batch operation
 func (k *KV) BatchWriteData(dataList []Data) error {
 	if len(dataList) == 0 {
@@ -244,6 +299,12 @@ func (k *KV) BatchWriteData(dataList []Data) error {
 			if err != nil {
 				return fmt.Errorf("failed to store metadata for key %x: %w", metadata.Key, err)
 			}
+
+			// Store parent-child relationships
+			err = k.storeParentChildRelationshipsTxn(txn, metadata.Key, metadata.Parent, metadata.Children)
+			if err != nil {
+				return fmt.Errorf("failed to store parent-child relationships for key %x: %w", metadata.Key, err)
+			}
 		}
 
 		// Store all chunks
@@ -263,5 +324,46 @@ func (k *KV) BatchWriteData(dataList []Data) error {
 	}
 
 	log.Debugf("Successfully batch wrote %d data objects", len(dataList))
+	return nil
+}
+
+// storeParentChildRelationshipsTxn stores parent-child relationships using a transaction
+func (k *KV) storeParentChildRelationshipsTxn(txn *badger.Txn, dataKey, parent hash.Hash, children []hash.Hash) error {
+	// Store parent -> child relationship (if this data has a parent)
+	if !isEmptyHash(parent) {
+		// Store: parent:PARENT_HASH -> child:DATA_KEY
+		parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, parent, dataKey)
+		err := txn.Set([]byte(parentToChildKey), []byte{})
+		if err != nil {
+			return fmt.Errorf("failed to store parent->child relationship: %w", err)
+		}
+
+		// Store: child:DATA_KEY -> parent:PARENT_HASH
+		childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, dataKey, parent)
+		err = txn.Set([]byte(childToParentKey), []byte{})
+		if err != nil {
+			return fmt.Errorf("failed to store child->parent relationship: %w", err)
+		}
+	}
+
+	// Store child -> parent relationships (for each child this data has)
+	for _, child := range children {
+		if !isEmptyHash(child) {
+			// Store: parent:DATA_KEY -> child:CHILD_HASH
+			parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, dataKey, child)
+			err := txn.Set([]byte(parentToChildKey), []byte{})
+			if err != nil {
+				return fmt.Errorf("failed to store parent->child relationship: %w", err)
+			}
+
+			// Store: child:CHILD_HASH -> parent:DATA_KEY
+			childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, child, dataKey)
+			err = txn.Set([]byte(childToParentKey), []byte{})
+			if err != nil {
+				return fmt.Errorf("failed to store child->parent relationship: %w", err)
+			}
+		}
+	}
+
 	return nil
 }

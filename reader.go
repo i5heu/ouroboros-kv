@@ -60,6 +60,164 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 	return data, nil
 }
 
+// GetChildren returns all direct children of a given data key
+func (k *KV) GetChildren(parentKey hash.Hash) ([]hash.Hash, error) {
+	var children []hash.Hash
+
+	err := k.badgerDB.View(func(txn *badger.Txn) error {
+		prefix := []byte(fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey))
+
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false // We only need keys
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			key := item.Key()
+
+			// Extract child hash from key: parent:PARENT_HASH:CHILD_HASH
+			keyStr := string(key)
+			prefixLen := len(fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey))
+			if len(keyStr) > prefixLen {
+				childHashHex := keyStr[prefixLen:]
+				log.Debugf("Parsing child hash hex: '%s' (length: %d)", childHashHex, len(childHashHex))
+				if len(childHashHex) == 128 { // 64 bytes = 128 hex chars
+					childHash, err := hash.HashHexadecimal(childHashHex)
+					if err == nil {
+						children = append(children, childHash)
+						log.Debugf("Successfully parsed child hash: %x", childHash)
+					} else {
+						log.Debugf("Failed to parse child hash: %v", err)
+					}
+				} else {
+					log.Debugf("Child hash hex wrong length: expected 128, got %d", len(childHashHex))
+				}
+			}
+		}
+		return nil
+	})
+
+	return children, err
+}
+
+// GetParent returns the parent of a given data key
+func (k *KV) GetParent(childKey hash.Hash) (hash.Hash, error) {
+	var parent hash.Hash
+
+	err := k.badgerDB.View(func(txn *badger.Txn) error {
+		prefix := []byte(fmt.Sprintf("%s%s:", CHILD_PREFIX, childKey))
+
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false // We only need keys
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			key := item.Key()
+
+			// Extract parent hash from key: child:CHILD_HASH:PARENT_HASH
+			keyStr := string(key)
+			parts := len(fmt.Sprintf("%s%s:", CHILD_PREFIX, childKey))
+			if len(keyStr) > parts {
+				parentHashHex := keyStr[parts:]
+				if len(parentHashHex) == 128 { // 64 bytes = 128 hex chars
+					parentHash, err := hash.HashHexadecimal(parentHashHex)
+					if err == nil {
+						parent = parentHash
+						break // Should only be one parent
+					}
+				}
+			}
+		}
+		return nil
+	})
+
+	return parent, err
+}
+
+// GetDescendants returns all descendants (children, grandchildren, etc.) of a given data key
+func (k *KV) GetDescendants(rootKey hash.Hash) ([]hash.Hash, error) {
+	var descendants []hash.Hash
+	visited := make(map[hash.Hash]bool)
+
+	var traverse func(hash.Hash) error
+	traverse = func(key hash.Hash) error {
+		if visited[key] {
+			return nil // Avoid cycles
+		}
+		visited[key] = true
+
+		children, err := k.GetChildren(key)
+		if err != nil {
+			return err
+		}
+
+		for _, child := range children {
+			descendants = append(descendants, child)
+			err = traverse(child)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	err := traverse(rootKey)
+	return descendants, err
+}
+
+// GetAncestors returns all ancestors (parent, grandparent, etc.) of a given data key
+func (k *KV) GetAncestors(leafKey hash.Hash) ([]hash.Hash, error) {
+	var ancestors []hash.Hash
+	visited := make(map[hash.Hash]bool)
+
+	current := leafKey
+	for {
+		if visited[current] {
+			break // Avoid cycles
+		}
+		visited[current] = true
+
+		parent, err := k.GetParent(current)
+		if err != nil {
+			return nil, err
+		}
+
+		if isEmptyHash(parent) {
+			break // No more parents
+		}
+
+		ancestors = append(ancestors, parent)
+		current = parent
+	}
+
+	return ancestors, nil
+}
+
+// GetRoots returns all data entries that have no parent (root nodes)
+func (k *KV) GetRoots() ([]hash.Hash, error) {
+	allKeys, err := k.ListKeys()
+	if err != nil {
+		return nil, err
+	}
+
+	var roots []hash.Hash
+	for _, key := range allKeys {
+		parent, err := k.GetParent(key)
+		if err != nil {
+			return nil, err
+		}
+
+		if isEmptyHash(parent) {
+			roots = append(roots, key)
+		}
+	}
+
+	return roots, nil
+}
+
 // loadMetadata loads and deserializes KvDataHash metadata from storage
 func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (KvDataHash, error) {
 	// Create key with metadata prefix
