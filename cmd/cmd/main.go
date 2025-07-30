@@ -17,16 +17,18 @@ const (
   %s <file>                    Store file and return base64 hash
   %s -d <base64_hash>          Delete data by base64 hash
   %s -r <base64_hash>          Restore data by base64 hash (outputs to stdout)
+  %s -ls                       List all stored data with detailed information
 
 Examples:
   %s document.pdf              # Store file, returns hash
   %s -d SGVsbG8gV29ybGQ=        # Delete data by hash
   %s -r SGVsbG8gV29ybGQ=        # Restore data by hash
+  %s -ls                       # List all stored data
 
 Note: 
-  Due to encryption key management limitations, stored files are only accessible
-  within the same session. Restarting the program will generate new encryption keys,
-  making previously stored data inaccessible.
+  The CLI automatically creates and manages encryption keys in the current directory.
+  All data stored with the CLI can be retrieved across different program runs using
+  the same encryption keys.
 `
 )
 
@@ -34,7 +36,7 @@ func main() {
 	progName := filepath.Base(os.Args[0])
 
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName)
+		fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
 		os.Exit(1)
 	}
 
@@ -51,7 +53,7 @@ func main() {
 	case "-d":
 		if len(os.Args) != 3 {
 			fmt.Fprintf(os.Stderr, "Error: -d requires a base64 hash argument\n")
-			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName)
+			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
 			os.Exit(1)
 		}
 		err := deleteFile(kv, os.Args[2])
@@ -64,7 +66,7 @@ func main() {
 	case "-r":
 		if len(os.Args) != 3 {
 			fmt.Fprintf(os.Stderr, "Error: -r requires a base64 hash argument\n")
-			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName)
+			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
 			os.Exit(1)
 		}
 		err := restoreFile(kv, os.Args[2])
@@ -73,11 +75,23 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "-ls":
+		if len(os.Args) != 2 {
+			fmt.Fprintf(os.Stderr, "Error: -ls does not take any arguments\n")
+			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
+			os.Exit(1)
+		}
+		err := listStoredData(kv)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing stored data: %v\n", err)
+			os.Exit(1)
+		}
+
 	default:
 		// Store file
 		if len(os.Args) != 2 {
 			fmt.Fprintf(os.Stderr, "Error: Too many arguments for store operation\n")
-			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName)
+			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
 			os.Exit(1)
 		}
 
@@ -241,4 +255,63 @@ func restoreFile(kv *ouroboroskv.KV, hashBase64 string) error {
 	}
 
 	return nil
+}
+
+func listStoredData(kv *ouroboroskv.KV) error {
+	// Get detailed information about all stored data
+	dataInfos, err := kv.ListStoredData()
+	if err != nil {
+		return fmt.Errorf("failed to list stored data: %w", err)
+	}
+
+	if len(dataInfos) == 0 {
+		fmt.Println("No data stored in the database.")
+		return nil
+	}
+
+	fmt.Printf("Found %d stored data entries:\n\n", len(dataInfos))
+	fmt.Println("=" + fmt.Sprintf("%0*s", 80, "="))
+
+	for i, info := range dataInfos {
+		fmt.Printf("Entry %d:\n", i+1)
+		fmt.Print(info.FormatDataInfo())
+		if i < len(dataInfos)-1 {
+			fmt.Printf("%s\n", fmt.Sprintf("%0*s", 80, "-"))
+		}
+	}
+
+	// Summary statistics
+	var totalClearSize, totalStorageSize uint64
+	var totalChunks, totalShards int
+
+	for _, info := range dataInfos {
+		totalClearSize += info.ClearTextSize
+		totalStorageSize += info.StorageSize
+		totalChunks += info.NumChunks
+		totalShards += info.NumShards
+	}
+
+	fmt.Println("=" + fmt.Sprintf("%0*s", 80, "="))
+	fmt.Printf("SUMMARY:\n")
+	fmt.Printf("Total Entries: %d\n", len(dataInfos))
+	fmt.Printf("Total Clear Text Size: %s (%d bytes)\n", formatBytes(totalClearSize), totalClearSize)
+	fmt.Printf("Total Storage Size: %s (%d bytes)\n", formatBytes(totalStorageSize), totalStorageSize)
+	fmt.Printf("Overall Compression Ratio: %.2fx\n", float64(totalStorageSize)/float64(totalClearSize))
+	fmt.Printf("Total Chunks: %d, Total Shards: %d\n", totalChunks, totalShards)
+
+	return nil
+}
+
+// formatBytes returns a human-readable byte size (duplicate of the one in list.go for CLI use)
+func formatBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
