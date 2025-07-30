@@ -20,26 +20,41 @@ type KV struct {
 	writeCounter uint64
 }
 
+// Data is the clear "value" in the key-value store, which contains the content and metadata.
 type Data struct {
-	Key      hash.Hash
-	Content  []byte
-	Parent   hash.Hash
-	Children []hash.Hash
+	Key                     hash.Hash   // Key of the content
+	Content                 []byte      // The actual content of the data
+	Parent                  hash.Hash   // Key of the parent value
+	Children                []hash.Hash // Keys of the child values
+	ReedSolomonShards       uint8       // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
+	ReedSolomonParityShards uint8       // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 }
 
-type KvData struct {
+// KvData represents a key-value data structure with hierarchical relationships.
+type KvDataHash struct {
 	Key         hash.Hash
 	ChunkHashes []hash.Hash // Hash of KvContentChunks
 	Parent      hash.Hash   // Key of the parent chunk
 	Children    []hash.Hash // Keys of the child chunks
 }
 
+type KvDataLinked struct {
+	Key      hash.Hash
+	Chunks   []KvContentChunk // Hash of KvContentChunks
+	Parent   hash.Hash        // Key of the parent chunk
+	Children []hash.Hash      // Keys of the child chunks
+}
+
+// KvContentChunk represents a chunk of content that will be stored in the key-value store.
 type KvContentChunk struct {
 	ChunkHash               hash.Hash // After chunking and before compression, encryption and erasure coding
+	EncodedHash             hash.Hash // After compression, encryption and erasure , including all the metadata in this struct except for EncodedHash
 	ReedSolomonShards       uint8     // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 	ReedSolomonParityShards uint8     // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 	ReedSolomonIndex        uint8     // Index of the chunk in the Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 	Size                    uint64    // Size of the chunk in bytes
+	EncapsulatedKey         []byte    // ML-KEM encapsulated secret for the chunk
+	Nonce                   []byte    // AES-GCM nonce for encryption
 	ChunkContent            []byte    // Content of the chunk after compression, encryption and erasure coding
 }
 
