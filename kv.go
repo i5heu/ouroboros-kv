@@ -95,3 +95,8 @@ func Init(crypt *crypt.Crypt, config *StoreConfig) (*KV, error) {
 		writeCounter: 0,
 	}, nil
 }
+
+// Close closes the BadgerDB instance
+func (k *KV) Close() error {
+	return k.badgerDB.Close()
+}
