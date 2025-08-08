@@ -24,8 +24,8 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Load all chunks for this data
-		var allChunks []KvContentChunk
-		for _, chunkHash := range metadata.ChunkHashes {
+		var allChunks []kvDataShard
+		for _, chunkHash := range metadata.ShardHashes {
 			chunks, err := k.loadChunksByHash(txn, chunkHash)
 			if err != nil {
 				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
@@ -34,9 +34,9 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Create KvDataLinked structure for decoding
-		kvDataLinked := KvDataLinked{
+		kvDataLinked := kvDataLinked{
 			Key:      metadata.Key,
-			Chunks:   allChunks,
+			Shards:   allChunks,
 			Parent:   metadata.Parent,
 			Children: metadata.Children,
 		}
@@ -223,16 +223,16 @@ func (k *KV) GetRoots() ([]hash.Hash, error) {
 }
 
 // loadMetadata loads and deserializes KvDataHash metadata from storage
-func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (KvDataHash, error) {
+func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 	// Create key with metadata prefix
 	metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
 
 	item, err := txn.Get([]byte(metadataKey))
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
-			return KvDataHash{}, fmt.Errorf("metadata not found for key %x", key)
+			return kvDataHash{}, fmt.Errorf("metadata not found for key %x", key)
 		}
-		return KvDataHash{}, fmt.Errorf("failed to get metadata: %w", err)
+		return kvDataHash{}, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
 	var protoData []byte
@@ -241,18 +241,18 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (KvDataHash, error) {
 		return nil
 	})
 	if err != nil {
-		return KvDataHash{}, fmt.Errorf("failed to read metadata value: %w", err)
+		return kvDataHash{}, fmt.Errorf("failed to read metadata value: %w", err)
 	}
 
 	// Deserialize protobuf
 	protoMetadata := &pb.KvDataHashProto{}
 	err = proto.Unmarshal(protoData, protoMetadata)
 	if err != nil {
-		return KvDataHash{}, fmt.Errorf("failed to unmarshal metadata: %w", err)
+		return kvDataHash{}, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
 
 	// Convert back to Go struct
-	metadata := KvDataHash{
+	metadata := kvDataHash{
 		Key: key, // We already know the key
 	}
 
@@ -266,7 +266,7 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (KvDataHash, error) {
 		if len(chunkHashBytes) == 64 {
 			var chunkHash hash.Hash
 			copy(chunkHash[:], chunkHashBytes)
-			metadata.ChunkHashes = append(metadata.ChunkHashes, chunkHash)
+			metadata.ShardHashes = append(metadata.ShardHashes, chunkHash)
 		}
 	}
 
@@ -283,8 +283,8 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (KvDataHash, error) {
 }
 
 // loadChunksByHash loads all chunks (shards) for a given chunk hash
-func (k *KV) loadChunksByHash(txn *badger.Txn, chunkHash hash.Hash) ([]KvContentChunk, error) {
-	var chunks []KvContentChunk
+func (k *KV) loadChunksByHash(txn *badger.Txn, chunkHash hash.Hash) ([]kvDataShard, error) {
+	var chunks []kvDataShard
 
 	// Create iterator to find all chunks with this hash
 	prefix := fmt.Sprintf("%s%x_", CHUNK_PREFIX, chunkHash)
@@ -304,14 +304,14 @@ func (k *KV) loadChunksByHash(txn *badger.Txn, chunkHash hash.Hash) ([]KvContent
 		}
 
 		// Deserialize protobuf
-		protoChunk := &pb.KvContentChunkProto{}
+		protoChunk := &pb.KvDataShardProto{}
 		err = proto.Unmarshal(protoData, protoChunk)
 		if err != nil {
 			return nil, fmt.Errorf("failed to unmarshal chunk: %w", err)
 		}
 
 		// Convert back to Go struct
-		chunk := KvContentChunk{
+		chunk := kvDataShard{
 			ReedSolomonShards:       uint8(protoChunk.ReedSolomonShards),
 			ReedSolomonParityShards: uint8(protoChunk.ReedSolomonParityShards),
 			ReedSolomonIndex:        uint8(protoChunk.ReedSolomonIndex),
@@ -358,8 +358,8 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			}
 
 			// Load all chunks
-			var allChunks []KvContentChunk
-			for _, chunkHash := range metadata.ChunkHashes {
+			var allChunks []kvDataShard
+			for _, chunkHash := range metadata.ShardHashes {
 				chunks, err := k.loadChunksByHash(txn, chunkHash)
 				if err != nil {
 					return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
@@ -368,9 +368,9 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			}
 
 			// Create KvDataLinked structure for decoding
-			kvDataLinked := KvDataLinked{
+			kvDataLinked := kvDataLinked{
 				Key:      metadata.Key,
-				Chunks:   allChunks,
+				Shards:   allChunks,
 				Parent:   metadata.Parent,
 				Children: metadata.Children,
 			}

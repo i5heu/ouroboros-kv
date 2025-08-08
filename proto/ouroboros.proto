@@ -7,13 +7,13 @@ option go_package = "github.com/i5heu/ouroboros-kv";
 // KvDataHashProto represents the metadata for stored data with chunk hashes
 message KvDataHashProto {
   bytes key = 1;                    // Key of the content (hash.Hash as bytes)
-  repeated bytes chunk_hashes = 2;  // Hashes of KvContentChunks
+  repeated bytes chunk_hashes = 2;  // Hashes of KvDataShards
   bytes parent = 3;                 // Key of the parent chunk
   repeated bytes children = 4;      // Keys of the child chunks
 }
 
-// KvContentChunkProto represents a chunk of content that will be stored in the key-value store
-message KvContentChunkProto {
+// KvDataShardProto represents a chunk of content that will be stored in the key-value store
+message KvDataShardProto {
   bytes chunk_hash = 1;                 // After chunking and before compression, encryption and erasure coding
   bytes encoded_hash = 2;               // After compression, encryption and erasure, including all the metadata
   uint32 reed_solomon_shards = 3;       // Number of shards in Reed-Solomon coding

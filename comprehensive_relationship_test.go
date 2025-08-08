@@ -19,7 +19,7 @@ func TestComprehensiveRelationships(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Initialize the database
-	config := &StoreConfig{
+	config := &Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1,
 	}

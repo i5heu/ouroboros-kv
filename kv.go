@@ -15,12 +15,12 @@ var log *logrus.Logger
 type KV struct {
 	badgerDB     *badger.DB
 	crypt        *crypt.Crypt
-	config       StoreConfig
+	config       Config
 	readCounter  uint64
 	writeCounter uint64
 }
 
-// Data is the clear "value" in the key-value store, which contains the content and metadata.
+// Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
 type Data struct {
 	Key                     hash.Hash   // Key of the content
 	Content                 []byte      // The actual content of the data
@@ -31,27 +31,27 @@ type Data struct {
 }
 
 // KvData represents a key-value data structure with hierarchical relationships.
-type KvDataHash struct {
+type kvDataHash struct {
 	Key         hash.Hash
-	ChunkHashes []hash.Hash // Hash of KvContentChunks
+	ShardHashes []hash.Hash // Hash of KvDataShards
 	Parent      hash.Hash   // Key of the parent chunk
 	Children    []hash.Hash // Keys of the child chunks
 }
 
-type KvDataLinked struct {
+type kvDataLinked struct {
 	Key      hash.Hash
-	Chunks   []KvContentChunk // Hash of KvContentChunks
-	Parent   hash.Hash        // Key of the parent chunk
-	Children []hash.Hash      // Keys of the child chunks
+	Shards   []kvDataShard // Hash of KvDataShards
+	Parent   hash.Hash     // Key of the parent chunk
+	Children []hash.Hash   // Keys of the child chunks
 }
 
-// KvContentChunk represents a chunk of content that will be stored in the key-value store.
-type KvContentChunk struct {
+// kvDataShard represents a chunk of content that will be stored in the key-value store.
+type kvDataShard struct {
 	ChunkHash               hash.Hash // After chunking and before compression, encryption and erasure coding
 	EncodedHash             hash.Hash // After compression, encryption and erasure , including all the metadata in this struct except for EncodedHash
 	ReedSolomonShards       uint8     // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 	ReedSolomonParityShards uint8     // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	ReedSolomonIndex        uint8     // Index of the chunk in the Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
+	ReedSolomonIndex        uint8     // Index of the chunk in the Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards and that ReedSolomonShards comes before ReedSolomonParityShards in the index counting)
 	Size                    uint64    // Size of the shard in bytes
 	OriginalSize            uint64    // Size of the original encrypted chunk before Reed-Solomon encoding
 	EncapsulatedKey         []byte    // ML-KEM encapsulated secret for the chunk
@@ -59,7 +59,7 @@ type KvContentChunk struct {
 	ChunkContent            []byte    // Content of the chunk after compression, encryption and erasure coding
 }
 
-func Init(crypt *crypt.Crypt, config *StoreConfig) (*KV, error) {
+func Init(crypt *crypt.Crypt, config *Config) (*KV, error) {
 	if config.Logger == nil {
 		config.Logger = logrus.New()
 	}

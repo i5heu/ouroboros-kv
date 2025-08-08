@@ -20,7 +20,7 @@ func (k *KV) DeleteData(key hash.Hash) error {
 		}
 
 		// Delete all chunks associated with this data
-		for _, chunkHash := range metadata.ChunkHashes {
+		for _, chunkHash := range metadata.ShardHashes {
 			chunks, err := k.loadChunksByHash(txn, chunkHash)
 			if err != nil {
 				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)

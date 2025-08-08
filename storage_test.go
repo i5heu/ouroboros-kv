@@ -22,7 +22,7 @@ func setupTestKVForStorage(t *testing.T) (*KV, func()) {
 	cryptInstance := crypt.New()
 
 	// Create config
-	config := &StoreConfig{
+	config := &Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1, // 1GB minimum
 		Logger:           logrus.New(),

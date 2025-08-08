@@ -22,7 +22,7 @@ func setupTestKVForDecryption(t *testing.T) (*KV, func()) {
 	cryptInstance := crypt.New()
 
 	// Create config
-	config := &StoreConfig{
+	config := &Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1, // 1GB minimum
 		Logger:           logrus.New(),
@@ -139,8 +139,8 @@ func TestReedSolomonReconstructor(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash (simulating what decodeDataPipeline does)
-	chunkGroups := make(map[hash.Hash][]KvContentChunk)
-	for _, chunk := range encoded.Chunks {
+	chunkGroups := make(map[hash.Hash][]kvDataShard)
+	for _, chunk := range encoded.Shards {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
 
@@ -188,8 +188,8 @@ func TestReedSolomonReconstructorWithMissingShards(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash
-	chunkGroups := make(map[hash.Hash][]KvContentChunk)
-	for _, chunk := range encoded.Chunks {
+	chunkGroups := make(map[hash.Hash][]kvDataShard)
+	for _, chunk := range encoded.Shards {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
 
@@ -221,13 +221,13 @@ func TestReedSolomonReconstructorErrors(t *testing.T) {
 	defer cleanup()
 
 	// Test with no chunks
-	_, err := kv.reedSolomonReconstructor([]KvContentChunk{})
+	_, err := kv.reedSolomonReconstructor([]kvDataShard{})
 	if err == nil {
 		t.Error("Expected error when reconstructing with no chunks")
 	}
 
 	// Test with invalid Reed-Solomon index
-	invalidChunk := KvContentChunk{
+	invalidChunk := kvDataShard{
 		ChunkHash:               hash.HashString("test"),
 		ReedSolomonShards:       2,
 		ReedSolomonParityShards: 1,
@@ -239,7 +239,7 @@ func TestReedSolomonReconstructorErrors(t *testing.T) {
 		Nonce:                   []byte("nonce"),
 	}
 
-	_, err = kv.reedSolomonReconstructor([]KvContentChunk{invalidChunk})
+	_, err = kv.reedSolomonReconstructor([]kvDataShard{invalidChunk})
 	if err == nil {
 		t.Error("Expected error when reconstructing with invalid Reed-Solomon index")
 	}
@@ -376,9 +376,9 @@ func TestDecodeDataPipelineWithCorruptedChunk(t *testing.T) {
 
 	// Corrupt a parity shard (not a data shard) to test error correction
 	corruptedParityShard := false
-	for i, chunk := range encoded.Chunks {
+	for i, chunk := range encoded.Shards {
 		if chunk.ReedSolomonIndex >= originalData.ReedSolomonShards { // This is a parity shard
-			encoded.Chunks[i].ChunkContent[0] ^= 0xFF // Flip bits
+			encoded.Shards[i].ChunkContent[0] ^= 0xFF // Flip bits
 			corruptedParityShard = true
 			break
 		}

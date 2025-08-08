@@ -23,7 +23,7 @@ func setupTestKV(t *testing.T) (*KV, func()) {
 	cryptInstance := crypt.New()
 
 	// Create config
-	config := &StoreConfig{
+	config := &Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1, // 1GB minimum
 		Logger:           logrus.New(),
@@ -81,13 +81,13 @@ func TestEncodeDataPipeline(t *testing.T) {
 	}
 
 	// Verify chunks were created
-	if len(result.Chunks) == 0 {
+	if len(result.Shards) == 0 {
 		t.Error("Expected chunks to be created, but got none")
 	}
 
 	// Verify Reed-Solomon settings
 	totalShards := testData.ReedSolomonShards + testData.ReedSolomonParityShards
-	for i, chunk := range result.Chunks {
+	for i, chunk := range result.Shards {
 		if chunk.ReedSolomonShards != testData.ReedSolomonShards {
 			t.Errorf("Chunk %d: expected %d Reed-Solomon shards, got %d", i, testData.ReedSolomonShards, chunk.ReedSolomonShards)
 		}
@@ -113,8 +113,8 @@ func TestEncodeDataPipelineEmptyContent(t *testing.T) {
 	}
 
 	// Empty content should result in no chunks since chunker returns 0 chunks
-	if len(result.Chunks) != 0 {
-		t.Errorf("Expected 0 chunks for empty content, got %d", len(result.Chunks))
+	if len(result.Shards) != 0 {
+		t.Errorf("Expected 0 chunks for empty content, got %d", len(result.Shards))
 	}
 }
 
@@ -305,15 +305,15 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 			}
 
 			// Verify result structure
-			if len(result.Chunks) == 0 {
+			if len(result.Shards) == 0 {
 				t.Errorf("No chunks created for %s", tc.name)
 			}
 
 			// Verify all chunks have consistent Reed-Solomon settings
 			expectedTotal := testData.ReedSolomonShards + testData.ReedSolomonParityShards
-			chunksByGroup := make(map[hash.Hash][]KvContentChunk)
+			chunksByGroup := make(map[hash.Hash][]kvDataShard)
 
-			for _, chunk := range result.Chunks {
+			for _, chunk := range result.Shards {
 				chunksByGroup[chunk.ChunkHash] = append(chunksByGroup[chunk.ChunkHash], chunk)
 			}
 

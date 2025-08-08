@@ -39,7 +39,7 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			cryptInstance := crypt.New()
 
 			// Create KV config
-			config := &StoreConfig{
+			config := &Config{
 				Paths:            []string{tempDir},
 				MinimumFreeSpace: 1,
 				Logger:           logrus.New(),
@@ -145,7 +145,7 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			cryptInstance := crypt.New()
 
 			// Create KV config
-			config := &StoreConfig{
+			config := &Config{
 				Paths:            []string{tempDir},
 				MinimumFreeSpace: 1,
 				Logger:           logrus.New(),
@@ -185,9 +185,9 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			assert.Equal(t, data.Key, encoded.Key, "Key should be preserved in encoding")
 			assert.Equal(t, data.Parent, encoded.Parent, "Parent should be preserved in encoding")
 			assert.Equal(t, data.Children, encoded.Children, "Children should be preserved in encoding")
-			assert.NotEmpty(t, encoded.Chunks, "Encoded data should have chunks")
+			assert.NotEmpty(t, encoded.Shards, "Encoded data should have chunks")
 
-			t.Logf("Encoded into %d chunks", len(encoded.Chunks))
+			t.Logf("Encoded into %d chunks", len(encoded.Shards))
 
 			// Test decoding pipeline
 			t.Logf("Testing decoding pipeline...")
@@ -259,7 +259,7 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 
 			// Create KV config
 			kvDir := filepath.Join(tempDir, "kv-data")
-			config := &StoreConfig{
+			config := &Config{
 				Paths:            []string{kvDir},
 				MinimumFreeSpace: 1,
 				Logger:           logrus.New(),

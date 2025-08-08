@@ -79,12 +79,12 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		// Initialize basic info
 		info.Key = key
 		info.KeyBase64 = base64.StdEncoding.EncodeToString(key[:])
-		info.ChunkHashes = metadata.ChunkHashes
-		info.NumChunks = len(metadata.ChunkHashes)
+		info.ChunkHashes = metadata.ShardHashes
+		info.NumChunks = len(metadata.ShardHashes)
 
 		// Load chunks to get detailed information
-		var allChunks []KvContentChunk
-		for _, chunkHash := range metadata.ChunkHashes {
+		var allChunks []kvDataShard
+		for _, chunkHash := range metadata.ShardHashes {
 			chunks, err := k.loadChunksByHash(txn, chunkHash)
 			if err != nil {
 				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
@@ -94,7 +94,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 
 		// Calculate sizes and analyze chunks
 		var totalStorageSize uint64
-		chunkMap := make(map[hash.Hash][]KvContentChunk)
+		chunkMap := make(map[hash.Hash][]kvDataShard)
 
 		// Group chunks by hash
 		for _, chunk := range allChunks {
@@ -102,7 +102,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		}
 
 		// Process each chunk group
-		for _, chunkHash := range metadata.ChunkHashes {
+		for _, chunkHash := range metadata.ShardHashes {
 			chunks := chunkMap[chunkHash]
 			if len(chunks) == 0 {
 				continue

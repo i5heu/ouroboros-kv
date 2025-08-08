@@ -13,7 +13,7 @@ import (
 const (
 	// Key prefixes for different data types in BadgerDB
 	METADATA_PREFIX = "meta:"   // For KvDataHash metadata
-	CHUNK_PREFIX    = "chunk:"  // For KvContentChunk data
+	CHUNK_PREFIX    = "chunk:"  // For KvDataShard data
 	PARENT_PREFIX   = "parent:" // For parent relationships: parent_key -> child_key
 	CHILD_PREFIX    = "child:"  // For child relationships: child_key -> parent_key
 )
@@ -31,19 +31,19 @@ func (k *KV) WriteData(data Data) error {
 
 	// Create metadata structure with chunk hashes
 	var chunkHashes []hash.Hash
-	chunkMap := make(map[hash.Hash][]KvContentChunk)
+	chunkMap := make(map[hash.Hash][]kvDataShard)
 
 	// Group chunks by their chunk hash to get unique chunk identifiers
-	for _, chunk := range encoded.Chunks {
+	for _, chunk := range encoded.Shards {
 		if _, exists := chunkMap[chunk.ChunkHash]; !exists {
 			chunkHashes = append(chunkHashes, chunk.ChunkHash)
 		}
 		chunkMap[chunk.ChunkHash] = append(chunkMap[chunk.ChunkHash], chunk)
 	}
 
-	metadata := KvDataHash{
+	metadata := kvDataHash{
 		Key:         encoded.Key,
-		ChunkHashes: chunkHashes,
+		ShardHashes: chunkHashes,
 		Parent:      encoded.Parent,
 		Children:    encoded.Children,
 	}
@@ -86,7 +86,7 @@ func (k *KV) WriteData(data Data) error {
 }
 
 // storeMetadata serializes and stores KvDataHash metadata
-func (k *KV) storeMetadata(txn *badger.Txn, metadata KvDataHash) error {
+func (k *KV) storeMetadata(txn *badger.Txn, metadata kvDataHash) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
 		Key:    metadata.Key[:],
@@ -94,7 +94,7 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata KvDataHash) error {
 	}
 
 	// Convert chunk hashes
-	for _, chunkHash := range metadata.ChunkHashes {
+	for _, chunkHash := range metadata.ShardHashes {
 		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
 	}
 
@@ -115,10 +115,10 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata KvDataHash) error {
 	return txn.Set([]byte(key), data)
 }
 
-// storeChunk serializes and stores a KvContentChunk
-func (k *KV) storeChunk(txn *badger.Txn, chunk KvContentChunk) error {
+// storeChunk serializes and stores a KvDataShard
+func (k *KV) storeChunk(txn *badger.Txn, chunk kvDataShard) error {
 	// Convert to protobuf
-	protoChunk := &pb.KvContentChunkProto{
+	protoChunk := &pb.KvDataShardProto{
 		ChunkHash:               chunk.ChunkHash[:],
 		EncodedHash:             chunk.EncodedHash[:],
 		ReedSolomonShards:       uint32(chunk.ReedSolomonShards),
@@ -145,7 +145,7 @@ func (k *KV) storeChunk(txn *badger.Txn, chunk KvContentChunk) error {
 }
 
 // storeMetadataWithBatch serializes and stores KvDataHash metadata using WriteBatch
-func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata KvDataHash) error {
+func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
 		Key:    metadata.Key[:],
@@ -153,7 +153,7 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata KvDataHash) 
 	}
 
 	// Convert chunk hashes
-	for _, chunkHash := range metadata.ChunkHashes {
+	for _, chunkHash := range metadata.ShardHashes {
 		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
 	}
 
@@ -174,10 +174,10 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata KvDataHash) 
 	return wb.Set([]byte(key), data)
 }
 
-// storeChunkWithBatch serializes and stores a KvContentChunk using WriteBatch
-func (k *KV) storeChunkWithBatch(wb *badger.WriteBatch, chunk KvContentChunk) error {
+// storeChunkWithBatch serializes and stores a KvDataShard using WriteBatch
+func (k *KV) storeChunkWithBatch(wb *badger.WriteBatch, chunk kvDataShard) error {
 	// Convert to protobuf
-	protoChunk := &pb.KvContentChunkProto{
+	protoChunk := &pb.KvDataShardProto{
 		ChunkHash:               chunk.ChunkHash[:],
 		EncodedHash:             chunk.EncodedHash[:],
 		ReedSolomonShards:       uint32(chunk.ReedSolomonShards),
@@ -259,9 +259,9 @@ func (k *KV) BatchWriteData(dataList []Data) error {
 	atomic.AddUint64(&k.writeCounter, uint64(len(dataList)))
 
 	// Process all data through encoding pipeline first
-	var encodedData []KvDataLinked
-	var allMetadata []KvDataHash
-	var allChunks []KvContentChunk
+	var encodedData []kvDataLinked
+	var allMetadata []kvDataHash
+	var allChunks []kvDataShard
 
 	for _, data := range dataList {
 		encoded, err := k.encodeDataPipeline(data)
@@ -274,7 +274,7 @@ func (k *KV) BatchWriteData(dataList []Data) error {
 		var chunkHashes []hash.Hash
 		chunkMap := make(map[hash.Hash]bool)
 
-		for _, chunk := range encoded.Chunks {
+		for _, chunk := range encoded.Shards {
 			if !chunkMap[chunk.ChunkHash] {
 				chunkHashes = append(chunkHashes, chunk.ChunkHash)
 				chunkMap[chunk.ChunkHash] = true
@@ -282,9 +282,9 @@ func (k *KV) BatchWriteData(dataList []Data) error {
 			allChunks = append(allChunks, chunk)
 		}
 
-		metadata := KvDataHash{
+		metadata := kvDataHash{
 			Key:         encoded.Key,
-			ChunkHashes: chunkHashes,
+			ShardHashes: chunkHashes,
 			Parent:      encoded.Parent,
 			Children:    encoded.Children,
 		}

@@ -11,10 +11,10 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
+func (k *KV) decodeDataPipeline(kvDataLinked kvDataLinked) (Data, error) {
 	// Group chunks by their chunk hash to reconstruct original encrypted chunks
-	chunkGroups := make(map[hash.Hash][]KvContentChunk)
-	for _, chunk := range kvDataLinked.Chunks {
+	chunkGroups := make(map[hash.Hash][]kvDataShard)
+	for _, chunk := range kvDataLinked.Shards {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
 
@@ -23,7 +23,7 @@ func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
 	// we'll extract it from the chunks themselves by looking at the unique chunk hashes in order they appear
 	var orderedChunkHashes []hash.Hash
 	seenHashes := make(map[hash.Hash]bool)
-	for _, chunk := range kvDataLinked.Chunks {
+	for _, chunk := range kvDataLinked.Shards {
 		if !seenHashes[chunk.ChunkHash] {
 			orderedChunkHashes = append(orderedChunkHashes, chunk.ChunkHash)
 			seenHashes[chunk.ChunkHash] = true
@@ -79,9 +79,9 @@ func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
 
 	// Get Reed-Solomon configuration from the first chunk (all chunks have the same config)
 	var reedSolomonShards, reedSolomonParityShards uint8
-	if len(kvDataLinked.Chunks) > 0 {
-		reedSolomonShards = kvDataLinked.Chunks[0].ReedSolomonShards
-		reedSolomonParityShards = kvDataLinked.Chunks[0].ReedSolomonParityShards
+	if len(kvDataLinked.Shards) > 0 {
+		reedSolomonShards = kvDataLinked.Shards[0].ReedSolomonShards
+		reedSolomonParityShards = kvDataLinked.Shards[0].ReedSolomonParityShards
 	}
 
 	return Data{
@@ -94,7 +94,7 @@ func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
 	}, nil
 }
 
-func (k *KV) reedSolomonReconstructor(chunks []KvContentChunk) (*encrypt.EncryptResult, error) {
+func (k *KV) reedSolomonReconstructor(chunks []kvDataShard) (*encrypt.EncryptResult, error) {
 	if len(chunks) == 0 {
 		return nil, fmt.Errorf("no chunks provided for reconstruction")
 	}

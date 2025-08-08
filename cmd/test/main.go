@@ -8,7 +8,7 @@ import (
 
 func main() {
 	fmt.Println("Hello, World!")
-	ouroboroskv.Init(nil, &ouroboroskv.StoreConfig{
+	ouroboroskv.Init(nil, &ouroboroskv.Config{
 		Paths:            []string{"./tmp/ouroboros-kv"},
 		MinimumFreeSpace: 10,
 		Logger:           nil,

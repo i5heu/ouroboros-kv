@@ -144,7 +144,7 @@ func initKV() (*ouroboroskv.KV, error) {
 	}
 
 	// Create config with absolute path
-	config := &ouroboroskv.StoreConfig{
+	config := &ouroboroskv.Config{
 		Paths:            []string{kvDir},
 		MinimumFreeSpace: 1, // 1GB minimum
 		Logger:           logrus.New(),

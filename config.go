@@ -8,13 +8,13 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type StoreConfig struct {
+type Config struct {
 	Paths            []string // absolute path at the moment only first path is supported
 	MinimumFreeSpace int      // in GB
 	Logger           *logrus.Logger
 }
 
-func (sc *StoreConfig) checkConfig() error {
+func (sc *Config) checkConfig() error {
 	if len(sc.Paths) == 0 {
 		return errors.New("no path provided in configuration")
 	}

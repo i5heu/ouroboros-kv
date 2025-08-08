@@ -25,7 +25,7 @@ const (
 type KvDataHashProto struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Key           []byte                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                                    // Key of the content (hash.Hash as bytes)
-	ChunkHashes   [][]byte               `protobuf:"bytes,2,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"` // Hashes of KvContentChunks
+	ChunkHashes   [][]byte               `protobuf:"bytes,2,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"` // Hashes of KvDataShards
 	Parent        []byte                 `protobuf:"bytes,3,opt,name=parent,proto3" json:"parent,omitempty"`                              // Key of the parent chunk
 	Children      [][]byte               `protobuf:"bytes,4,rep,name=children,proto3" json:"children,omitempty"`                          // Keys of the child chunks
 	unknownFields protoimpl.UnknownFields
@@ -90,8 +90,8 @@ func (x *KvDataHashProto) GetChildren() [][]byte {
 	return nil
 }
 
-// KvContentChunkProto represents a chunk of content that will be stored in the key-value store
-type KvContentChunkProto struct {
+// KvDataShardProto represents a chunk of content that will be stored in the key-value store
+type KvDataShardProto struct {
 	state                   protoimpl.MessageState `protogen:"open.v1"`
 	ChunkHash               []byte                 `protobuf:"bytes,1,opt,name=chunk_hash,json=chunkHash,proto3" json:"chunk_hash,omitempty"`                                                // After chunking and before compression, encryption and erasure coding
 	EncodedHash             []byte                 `protobuf:"bytes,2,opt,name=encoded_hash,json=encodedHash,proto3" json:"encoded_hash,omitempty"`                                          // After compression, encryption and erasure, including all the metadata
@@ -107,20 +107,20 @@ type KvContentChunkProto struct {
 	sizeCache               protoimpl.SizeCache
 }
 
-func (x *KvContentChunkProto) Reset() {
-	*x = KvContentChunkProto{}
+func (x *KvDataShardProto) Reset() {
+	*x = KvDataShardProto{}
 	mi := &file_proto_ouroboros_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *KvContentChunkProto) String() string {
+func (x *KvDataShardProto) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*KvContentChunkProto) ProtoMessage() {}
+func (*KvDataShardProto) ProtoMessage() {}
 
-func (x *KvContentChunkProto) ProtoReflect() protoreflect.Message {
+func (x *KvDataShardProto) ProtoReflect() protoreflect.Message {
 	mi := &file_proto_ouroboros_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -132,75 +132,75 @@ func (x *KvContentChunkProto) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use KvContentChunkProto.ProtoReflect.Descriptor instead.
-func (*KvContentChunkProto) Descriptor() ([]byte, []int) {
+// Deprecated: Use KvDataShardProto.ProtoReflect.Descriptor instead.
+func (*KvDataShardProto) Descriptor() ([]byte, []int) {
 	return file_proto_ouroboros_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *KvContentChunkProto) GetChunkHash() []byte {
+func (x *KvDataShardProto) GetChunkHash() []byte {
 	if x != nil {
 		return x.ChunkHash
 	}
 	return nil
 }
 
-func (x *KvContentChunkProto) GetEncodedHash() []byte {
+func (x *KvDataShardProto) GetEncodedHash() []byte {
 	if x != nil {
 		return x.EncodedHash
 	}
 	return nil
 }
 
-func (x *KvContentChunkProto) GetReedSolomonShards() uint32 {
+func (x *KvDataShardProto) GetReedSolomonShards() uint32 {
 	if x != nil {
 		return x.ReedSolomonShards
 	}
 	return 0
 }
 
-func (x *KvContentChunkProto) GetReedSolomonParityShards() uint32 {
+func (x *KvDataShardProto) GetReedSolomonParityShards() uint32 {
 	if x != nil {
 		return x.ReedSolomonParityShards
 	}
 	return 0
 }
 
-func (x *KvContentChunkProto) GetReedSolomonIndex() uint32 {
+func (x *KvDataShardProto) GetReedSolomonIndex() uint32 {
 	if x != nil {
 		return x.ReedSolomonIndex
 	}
 	return 0
 }
 
-func (x *KvContentChunkProto) GetSize() uint64 {
+func (x *KvDataShardProto) GetSize() uint64 {
 	if x != nil {
 		return x.Size
 	}
 	return 0
 }
 
-func (x *KvContentChunkProto) GetOriginalSize() uint64 {
+func (x *KvDataShardProto) GetOriginalSize() uint64 {
 	if x != nil {
 		return x.OriginalSize
 	}
 	return 0
 }
 
-func (x *KvContentChunkProto) GetEncapsulatedKey() []byte {
+func (x *KvDataShardProto) GetEncapsulatedKey() []byte {
 	if x != nil {
 		return x.EncapsulatedKey
 	}
 	return nil
 }
 
-func (x *KvContentChunkProto) GetNonce() []byte {
+func (x *KvDataShardProto) GetNonce() []byte {
 	if x != nil {
 		return x.Nonce
 	}
 	return nil
 }
 
-func (x *KvContentChunkProto) GetChunkContent() []byte {
+func (x *KvDataShardProto) GetChunkContent() []byte {
 	if x != nil {
 		return x.ChunkContent
 	}
@@ -216,8 +216,8 @@ const file_proto_ouroboros_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12!\n" +
 	"\fchunk_hashes\x18\x02 \x03(\fR\vchunkHashes\x12\x16\n" +
 	"\x06parent\x18\x03 \x01(\fR\x06parent\x12\x1a\n" +
-	"\bchildren\x18\x04 \x03(\fR\bchildren\"\x91\x03\n" +
-	"\x13KvContentChunkProto\x12\x1d\n" +
+	"\bchildren\x18\x04 \x03(\fR\bchildren\"\x8e\x03\n" +
+	"\x10KvDataShardProto\x12\x1d\n" +
 	"\n" +
 	"chunk_hash\x18\x01 \x01(\fR\tchunkHash\x12!\n" +
 	"\fencoded_hash\x18\x02 \x01(\fR\vencodedHash\x12.\n" +
@@ -245,8 +245,8 @@ func file_proto_ouroboros_proto_rawDescGZIP() []byte {
 
 var file_proto_ouroboros_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_ouroboros_proto_goTypes = []any{
-	(*KvDataHashProto)(nil),     // 0: ouroboroskv.KvDataHashProto
-	(*KvContentChunkProto)(nil), // 1: ouroboroskv.KvContentChunkProto
+	(*KvDataHashProto)(nil),  // 0: ouroboroskv.KvDataHashProto
+	(*KvDataShardProto)(nil), // 1: ouroboroskv.KvDataShardProto
 }
 var file_proto_ouroboros_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
