@@ -1,5 +1,7 @@
 # ouroboros-kv
 
+⚠️ Please note that this is still a prototype that has not yet been fully tested or optimized for production use or speed. There was no security audit performed. Version 2 will include these improvements. ⚠️
+
 A key-value (read hash-data) store implementation in Go that provides advanced data processing features including chunking, erasure coding, encryption, compression, and hierarchical parent-child relationships between keys.
 
 ## Features
