@@ -94,7 +94,7 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 		}
 	})
 
-	b.Run("ListStoredData", func(b *testing.B) {
+	b.Run("ListKeys", func(b *testing.B) {
 		keyCount := b.N
 		values := make([][]byte, keyCount)
 		dataObjs := make([]Data, keyCount)
@@ -132,10 +132,10 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			infos, err := kv.ListStoredData()
+			keys, err := kv.ListKeys()
 			require.NoError(b, err)
-			if len(infos) < keyCount {
-				b.Fatalf("expected at least %d keys, got %d", keyCount, len(infos))
+			if len(keys) < keyCount {
+				b.Fatalf("expected at least %d keys, got %d", keyCount, len(keys))
 			}
 		}
 	})
