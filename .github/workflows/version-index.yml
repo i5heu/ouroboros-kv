@@ -1,0 +1,29 @@
+name: Version Index
+
+on:
+  release:
+    types: [published]
+    
+  workflow_dispatch:
+
+jobs:
+  go-get:
+    name: Install Go Package with Released Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Get Version
+        id: get_version
+        uses: battila7/get-version-action@v2.2.1
+
+      - name: Fetch Go Package Info
+        uses: fjogeleit/http-request-action@v1.15.5
+        with:
+          url: "https://proxy.golang.org/github.com/i5heu/ouroboros-kv/@latest"
+
+      - name: Send Another HTTP Request
+        uses: fjogeleit/http-request-action@v1.15.5
+        with:
+          url: "https://proxy.golang.org/github.com/i5heu/ouroboros-kv/@v/${{ steps.get_version.outputs.version }}.info"

@@ -1,3 +1,10 @@
+ [![Go Reference](https://pkg.go.dev/badge/github.com/i5heu/ouroboros-kv.svg)](https://pkg.go.dev/github.com/i5heu/ouroboros-kv) [![Tests](https://github.com/i5heu/OuroborosDB/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/i5heu/OuroborosDB/actions/workflows/go.yml) ![](https://github.com/i5heu/OuroborosDB/blob/gh-pages/.badges/main/coverage.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/i5heu/ouroboros-kv)](https://goreportcard.com/report/github.com/i5heu/ouroboros-kv) [![wakatime](https://wakatime.com/badge/user/5c9e80ad-4978-4730-9587-c758525cbd4e/project/d9390264-f9b4-4fab-8397-ae875fad5efa.svg)](https://wakatime.com/badge/user/5c9e80ad-4978-4730-9587-c758525cbd4e/project/d9390264-f9b4-4fab-8397-ae875fad5efa.svg)
+ 
+<p align="center">
+  <img src=".media/logo.jpeg"  width="300">
+</p>
+
+
 # ouroboros-kv
 
 ⚠️ Please note that this is still a prototype that has not yet been fully tested or optimized for production use or speed. There was no security audit performed. Version 2 will include these improvements. ⚠️
