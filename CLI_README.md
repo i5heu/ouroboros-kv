@@ -64,18 +64,6 @@ The CLI implements the requirements as specified:
 5. **Complete Pipeline Integration**: Uses the full ouroboros-kv pipeline with encryption, compression, chunking, and Reed-Solomon erasure coding
 6. **Persistent Encryption Keys**: Automatically manages encryption keys across CLI sessions
 
-## Testing
-
-Run the test suite to see all functionality demonstrated:
-
-```bash
-# Complete functionality test (shows the limitation)
-./test_cli.sh
-
-# Single session analysis
-./single_session_test.sh
-```
-
 ## Files
 
 - `cmd/cmd/main.go` - Main CLI application
