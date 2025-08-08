@@ -8,8 +8,8 @@ import (
 	"github.com/i5heu/ouroboros-crypt/encrypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
 	chunker "github.com/ipfs/boxo/chunker"
-	"github.com/klauspost/reedsolomon"
 	"github.com/klauspost/compress/zstd"
+	"github.com/klauspost/reedsolomon"
 )
 
 func (k *KV) encodeDataPipeline(data Data) (KvDataLinked, error) {
@@ -27,14 +27,14 @@ func (k *KV) encodeDataPipeline(data Data) (KvDataLinked, error) {
 	}
 
 	// compress the chunk
-		var compressedChunks [][]byte
-		for _, chunk := range chunks {
-			compressedChunk, err := compressWithZstd(chunk)
-			if err != nil {
-				return KvDataLinked{}, err
-			}
-			compressedChunks = append(compressedChunks, compressedChunk)
+	var compressedChunks [][]byte
+	for _, chunk := range chunks {
+		compressedChunk, err := compressWithZstd(chunk)
+		if err != nil {
+			return KvDataLinked{}, err
 		}
+		compressedChunks = append(compressedChunks, compressedChunk)
+	}
 
 	// encrypt the chunk
 	var encryptedChunks []*encrypt.EncryptResult

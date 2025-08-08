@@ -7,8 +7,8 @@ import (
 
 	"github.com/i5heu/ouroboros-crypt/encrypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
-	"github.com/klauspost/reedsolomon"
 	"github.com/klauspost/compress/zstd"
+	"github.com/klauspost/reedsolomon"
 )
 
 func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
@@ -53,14 +53,14 @@ func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
 	}
 
 	// Decompress the chunks
-		var chunks [][]byte
-		for _, compressedChunk := range compressedChunks {
-			decompressedChunk, err := decompressWithZstd(compressedChunk)
-			if err != nil {
-				return Data{}, fmt.Errorf("failed to decompress chunk: %w", err)
-			}
-			chunks = append(chunks, decompressedChunk)
+	var chunks [][]byte
+	for _, compressedChunk := range compressedChunks {
+		decompressedChunk, err := decompressWithZstd(compressedChunk)
+		if err != nil {
+			return Data{}, fmt.Errorf("failed to decompress chunk: %w", err)
 		}
+		chunks = append(chunks, decompressedChunk)
+	}
 
 	// Verify chunk hashes in order
 	for i, chunk := range chunks {

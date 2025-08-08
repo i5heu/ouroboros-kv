@@ -183,15 +183,15 @@ func TestCompressWithZstd(t *testing.T) {
 }
 
 func TestCompressWithZstdEmptyData(t *testing.T) {
-       compressed, err := compressWithZstd([]byte{})
-       if err != nil {
-	       t.Fatalf("compressWithZstd with empty data failed: %v", err)
-       }
+	compressed, err := compressWithZstd([]byte{})
+	if err != nil {
+		t.Fatalf("compressWithZstd with empty data failed: %v", err)
+	}
 
-       // Zstd returns an empty slice for empty input
-       if len(compressed) != 0 {
-	       t.Errorf("Expected compressed empty data to have zero length, got %d", len(compressed))
-       }
+	// Zstd returns an empty slice for empty input
+	if len(compressed) != 0 {
+		t.Errorf("Expected compressed empty data to have zero length, got %d", len(compressed))
+	}
 }
 
 func TestReedSolomonSplitter(t *testing.T) {
