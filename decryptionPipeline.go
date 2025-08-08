@@ -8,7 +8,7 @@ import (
 	"github.com/i5heu/ouroboros-crypt/encrypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
 	"github.com/klauspost/reedsolomon"
-	"github.com/ulikunitz/xz/lzma"
+	"github.com/klauspost/compress/zstd"
 )
 
 func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
@@ -53,14 +53,14 @@ func (k *KV) decodeDataPipeline(kvDataLinked KvDataLinked) (Data, error) {
 	}
 
 	// Decompress the chunks
-	var chunks [][]byte
-	for _, compressedChunk := range compressedChunks {
-		decompressedChunk, err := decompressWithLzma(compressedChunk)
-		if err != nil {
-			return Data{}, fmt.Errorf("failed to decompress chunk: %w", err)
+		var chunks [][]byte
+		for _, compressedChunk := range compressedChunks {
+			decompressedChunk, err := decompressWithZstd(compressedChunk)
+			if err != nil {
+				return Data{}, fmt.Errorf("failed to decompress chunk: %w", err)
+			}
+			chunks = append(chunks, decompressedChunk)
 		}
-		chunks = append(chunks, decompressedChunk)
-	}
 
 	// Verify chunk hashes in order
 	for i, chunk := range chunks {
@@ -158,17 +158,18 @@ func (k *KV) reedSolomonReconstructor(chunks []KvContentChunk) (*encrypt.Encrypt
 	}, nil
 }
 
-func decompressWithLzma(data []byte) ([]byte, error) {
+func decompressWithZstd(data []byte) ([]byte, error) {
 	reader := bytes.NewReader(data)
-	r, err := lzma.NewReader(reader)
+	dec, err := zstd.NewReader(reader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create LZMA reader: %w", err)
+		return nil, fmt.Errorf("failed to create Zstd reader: %w", err)
 	}
+	defer dec.Close()
 
 	var buf bytes.Buffer
-	_, err = io.Copy(&buf, r)
+	_, err = io.Copy(&buf, dec)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decompress LZMA data: %w", err)
+		return nil, fmt.Errorf("failed to decompress Zstd data: %w", err)
 	}
 
 	return buf.Bytes(), nil

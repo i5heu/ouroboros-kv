@@ -9,7 +9,7 @@ import (
 	"github.com/i5heu/ouroboros-crypt/hash"
 	chunker "github.com/ipfs/boxo/chunker"
 	"github.com/klauspost/reedsolomon"
-	"github.com/ulikunitz/xz/lzma"
+	"github.com/klauspost/compress/zstd"
 )
 
 func (k *KV) encodeDataPipeline(data Data) (KvDataLinked, error) {
@@ -27,14 +27,14 @@ func (k *KV) encodeDataPipeline(data Data) (KvDataLinked, error) {
 	}
 
 	// compress the chunk
-	var compressedChunks [][]byte
-	for _, chunk := range chunks {
-		compressedChunk, err := compressWithLzma(chunk)
-		if err != nil {
-			return KvDataLinked{}, err
+		var compressedChunks [][]byte
+		for _, chunk := range chunks {
+			compressedChunk, err := compressWithZstd(chunk)
+			if err != nil {
+				return KvDataLinked{}, err
+			}
+			compressedChunks = append(compressedChunks, compressedChunk)
 		}
-		compressedChunks = append(compressedChunks, compressedChunk)
-	}
 
 	// encrypt the chunk
 	var encryptedChunks []*encrypt.EncryptResult
@@ -82,22 +82,20 @@ func (k *KV) chunker(data Data) ([][]byte, error) {
 	return chunks, nil
 }
 
-func compressWithLzma(data []byte) ([]byte, error) {
+func compressWithZstd(data []byte) ([]byte, error) {
 	var buf bytes.Buffer
-	w, err := lzma.NewWriter(&buf)
+	enc, err := zstd.NewWriter(&buf)
 	if err != nil {
 		return nil, err
 	}
-	_, err = w.Write(data)
+	_, err = enc.Write(data)
 	if err != nil {
 		return nil, err
 	}
-
-	err = w.Close()
+	err = enc.Close()
 	if err != nil {
 		return nil, err
 	}
-
 	return buf.Bytes(), nil
 }
 

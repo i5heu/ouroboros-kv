@@ -162,13 +162,13 @@ func TestChunkerEmptyContent(t *testing.T) {
 	}
 }
 
-func TestCompressWithLzma(t *testing.T) {
-	testData := []byte("This is test data for LZMA compression. It should compress well if it's repetitive. " +
-		"This is test data for LZMA compression. It should compress well if it's repetitive.")
+func TestCompressWithZstd(t *testing.T) {
+	testData := []byte("This is test data for Zstd compression. It should compress well if it's repetitive. " +
+		"This is test data for Zstd compression. It should compress well if it's repetitive.")
 
-	compressed, err := compressWithLzma(testData)
+	compressed, err := compressWithZstd(testData)
 	if err != nil {
-		t.Fatalf("compressWithLzma failed: %v", err)
+		t.Fatalf("compressWithZstd failed: %v", err)
 	}
 
 	if len(compressed) == 0 {
@@ -182,16 +182,16 @@ func TestCompressWithLzma(t *testing.T) {
 	}
 }
 
-func TestCompressWithLzmaEmptyData(t *testing.T) {
-	compressed, err := compressWithLzma([]byte{})
-	if err != nil {
-		t.Fatalf("compressWithLzma with empty data failed: %v", err)
-	}
+func TestCompressWithZstdEmptyData(t *testing.T) {
+       compressed, err := compressWithZstd([]byte{})
+       if err != nil {
+	       t.Fatalf("compressWithZstd with empty data failed: %v", err)
+       }
 
-	// Empty data should still produce some compressed output (LZMA headers)
-	if len(compressed) == 0 {
-		t.Error("Expected compressed empty data to have non-zero length due to headers")
-	}
+       // Zstd returns an empty slice for empty input
+       if len(compressed) != 0 {
+	       t.Errorf("Expected compressed empty data to have zero length, got %d", len(compressed))
+       }
 }
 
 func TestReedSolomonSplitter(t *testing.T) {

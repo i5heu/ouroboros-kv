@@ -245,19 +245,19 @@ func TestReedSolomonReconstructorErrors(t *testing.T) {
 	}
 }
 
-func TestDecompressWithLzma(t *testing.T) {
+func TestDecompressWithZstd(t *testing.T) {
 	// Test data
-	originalData := []byte("This is test data for LZMA decompression testing. " +
+	originalData := []byte("This is test data for Zstd decompression testing. " +
 		"It should be compressed and then decompressed successfully.")
 
 	// Compress the data first
-	compressed, err := compressWithLzma(originalData)
+	compressed, err := compressWithZstd(originalData)
 	if err != nil {
 		t.Fatalf("Failed to compress test data: %v", err)
 	}
 
 	// Decompress the data
-	decompressed, err := decompressWithLzma(compressed)
+	decompressed, err := decompressWithZstd(compressed)
 	if err != nil {
 		t.Fatalf("Failed to decompress data: %v", err)
 	}
@@ -268,18 +268,18 @@ func TestDecompressWithLzma(t *testing.T) {
 	}
 }
 
-func TestDecompressWithLzmaEmptyData(t *testing.T) {
+func TestDecompressWithZstdEmptyData(t *testing.T) {
 	// Test with empty data
 	originalData := []byte{}
 
 	// Compress the empty data first
-	compressed, err := compressWithLzma(originalData)
+	compressed, err := compressWithZstd(originalData)
 	if err != nil {
 		t.Fatalf("Failed to compress empty data: %v", err)
 	}
 
 	// Decompress the data
-	decompressed, err := decompressWithLzma(compressed)
+	decompressed, err := decompressWithZstd(compressed)
 	if err != nil {
 		t.Fatalf("Failed to decompress empty data: %v", err)
 	}
@@ -290,13 +290,13 @@ func TestDecompressWithLzmaEmptyData(t *testing.T) {
 	}
 }
 
-func TestDecompressWithLzmaInvalidData(t *testing.T) {
+func TestDecompressWithZstdInvalidData(t *testing.T) {
 	// Test with invalid compressed data
-	invalidData := []byte("this is not valid LZMA compressed data")
+	invalidData := []byte("this is not valid Zstd compressed data")
 
-	_, err := decompressWithLzma(invalidData)
+	_, err := decompressWithZstd(invalidData)
 	if err == nil {
-		t.Error("Expected error when decompressing invalid LZMA data")
+		t.Error("Expected error when decompressing invalid Zstd data")
 	}
 }
 
