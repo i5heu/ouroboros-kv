@@ -8,6 +8,8 @@ import (
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/encrypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-kv/pipeline"
+	"github.com/i5heu/ouroboros-kv/storage"
 	"github.com/sirupsen/logrus"
 )
 
@@ -119,12 +121,9 @@ func TestEncodeDataPipelineEmptyContent(t *testing.T) {
 }
 
 func TestChunker(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
 	testData := createTestData()
 
-	chunks, err := kv.chunker(testData)
+	chunks, err := pipeline.Chunk(testData.Content)
 	if err != nil {
 		t.Fatalf("chunker failed: %v", err)
 	}
@@ -145,13 +144,10 @@ func TestChunker(t *testing.T) {
 }
 
 func TestChunkerEmptyContent(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
 	testData := createTestData()
 	testData.Content = []byte{}
 
-	chunks, err := kv.chunker(testData)
+	chunks, err := pipeline.Chunk(testData.Content)
 	if err != nil {
 		t.Fatalf("chunker with empty content failed: %v", err)
 	}
@@ -166,7 +162,7 @@ func TestCompressWithZstd(t *testing.T) {
 	testData := []byte("This is test data for Zstd compression. It should compress well if it's repetitive. " +
 		"This is test data for Zstd compression. It should compress well if it's repetitive.")
 
-	compressed, err := compressWithZstd(testData)
+	compressed, err := pipeline.CompressWithZstd(testData)
 	if err != nil {
 		t.Fatalf("compressWithZstd failed: %v", err)
 	}
@@ -183,7 +179,7 @@ func TestCompressWithZstd(t *testing.T) {
 }
 
 func TestCompressWithZstdEmptyData(t *testing.T) {
-	compressed, err := compressWithZstd([]byte{})
+	compressed, err := pipeline.CompressWithZstd([]byte{})
 	if err != nil {
 		t.Fatalf("compressWithZstd with empty data failed: %v", err)
 	}
@@ -210,9 +206,9 @@ func TestReedSolomonSplitter(t *testing.T) {
 	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	chunks, err := kv.reedSolomonSplitter(testData, encryptedChunks, chunkHashes)
+	chunks, err := pipeline.SplitReedSolomon(encryptedChunks, chunkHashes, testData.ReedSolomonShards, testData.ReedSolomonParityShards)
 	if err != nil {
-		t.Fatalf("reedSolomonSplitter failed: %v", err)
+		t.Fatalf("SplitReedSolomon failed: %v", err)
 	}
 
 	expectedTotalShards := int(testData.ReedSolomonShards + testData.ReedSolomonParityShards)
@@ -263,7 +259,7 @@ func TestReedSolomonSplitterInvalidShardConfig(t *testing.T) {
 	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	_, err = kv.reedSolomonSplitter(testData, encryptedChunks, chunkHashes)
+	_, err = pipeline.SplitReedSolomon(encryptedChunks, chunkHashes, testData.ReedSolomonShards, testData.ReedSolomonParityShards)
 	if err == nil {
 		t.Error("Expected error for invalid Reed-Solomon configuration, but got none")
 	}
@@ -311,7 +307,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 
 			// Verify all chunks have consistent Reed-Solomon settings
 			expectedTotal := testData.ReedSolomonShards + testData.ReedSolomonParityShards
-			chunksByGroup := make(map[hash.Hash][]kvDataShard)
+			chunksByGroup := make(map[hash.Hash][]storage.Shard)
 
 			for _, chunk := range result.Shards {
 				chunksByGroup[chunk.ChunkHash] = append(chunksByGroup[chunk.ChunkHash], chunk)

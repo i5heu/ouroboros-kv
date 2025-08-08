@@ -7,6 +7,8 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-kv/pipeline"
+	"github.com/i5heu/ouroboros-kv/storage"
 	"github.com/sirupsen/logrus"
 )
 
@@ -139,14 +141,14 @@ func TestReedSolomonReconstructor(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash (simulating what decodeDataPipeline does)
-	chunkGroups := make(map[hash.Hash][]kvDataShard)
+	chunkGroups := make(map[hash.Hash][]storage.Shard)
 	for _, chunk := range encoded.Shards {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
 
 	// Test reconstruction for each chunk group
 	for chunkHash, chunks := range chunkGroups {
-		reconstructed, err := kv.reedSolomonReconstructor(chunks)
+		reconstructed, err := pipeline.ReconstructReedSolomon(chunks)
 		if err != nil {
 			t.Fatalf("Failed to reconstruct chunk group %v: %v", chunkHash, err)
 		}
@@ -188,7 +190,7 @@ func TestReedSolomonReconstructorWithMissingShards(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash
-	chunkGroups := make(map[hash.Hash][]kvDataShard)
+	chunkGroups := make(map[hash.Hash][]storage.Shard)
 	for _, chunk := range encoded.Shards {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
@@ -198,7 +200,7 @@ func TestReedSolomonReconstructorWithMissingShards(t *testing.T) {
 		// Remove one shard (should still be able to reconstruct)
 		incompleteChunks := chunks[:len(chunks)-1]
 
-		reconstructed, err := kv.reedSolomonReconstructor(incompleteChunks)
+		reconstructed, err := pipeline.ReconstructReedSolomon(incompleteChunks)
 		if err != nil {
 			t.Fatalf("Failed to reconstruct chunk group %v with missing shard: %v", chunkHash, err)
 		}
@@ -217,17 +219,14 @@ func TestReedSolomonReconstructorWithMissingShards(t *testing.T) {
 }
 
 func TestReedSolomonReconstructorErrors(t *testing.T) {
-	kv, cleanup := setupTestKVForDecryption(t)
-	defer cleanup()
-
 	// Test with no chunks
-	_, err := kv.reedSolomonReconstructor([]kvDataShard{})
+	_, err := pipeline.ReconstructReedSolomon([]storage.Shard{})
 	if err == nil {
 		t.Error("Expected error when reconstructing with no chunks")
 	}
 
 	// Test with invalid Reed-Solomon index
-	invalidChunk := kvDataShard{
+	invalidChunk := storage.Shard{
 		ChunkHash:               hash.HashString("test"),
 		ReedSolomonShards:       2,
 		ReedSolomonParityShards: 1,
@@ -238,8 +237,7 @@ func TestReedSolomonReconstructorErrors(t *testing.T) {
 		EncapsulatedKey:         []byte("key"),
 		Nonce:                   []byte("nonce"),
 	}
-
-	_, err = kv.reedSolomonReconstructor([]kvDataShard{invalidChunk})
+	_, err = pipeline.ReconstructReedSolomon([]storage.Shard{invalidChunk})
 	if err == nil {
 		t.Error("Expected error when reconstructing with invalid Reed-Solomon index")
 	}
@@ -251,13 +249,13 @@ func TestDecompressWithZstd(t *testing.T) {
 		"It should be compressed and then decompressed successfully.")
 
 	// Compress the data first
-	compressed, err := compressWithZstd(originalData)
+	compressed, err := pipeline.CompressWithZstd(originalData)
 	if err != nil {
 		t.Fatalf("Failed to compress test data: %v", err)
 	}
 
 	// Decompress the data
-	decompressed, err := decompressWithZstd(compressed)
+	decompressed, err := pipeline.DecompressWithZstd(compressed)
 	if err != nil {
 		t.Fatalf("Failed to decompress data: %v", err)
 	}
@@ -273,13 +271,13 @@ func TestDecompressWithZstdEmptyData(t *testing.T) {
 	originalData := []byte{}
 
 	// Compress the empty data first
-	compressed, err := compressWithZstd(originalData)
+	compressed, err := pipeline.CompressWithZstd(originalData)
 	if err != nil {
 		t.Fatalf("Failed to compress empty data: %v", err)
 	}
 
 	// Decompress the data
-	decompressed, err := decompressWithZstd(compressed)
+	decompressed, err := pipeline.DecompressWithZstd(compressed)
 	if err != nil {
 		t.Fatalf("Failed to decompress empty data: %v", err)
 	}
@@ -294,7 +292,7 @@ func TestDecompressWithZstdInvalidData(t *testing.T) {
 	// Test with invalid compressed data
 	invalidData := []byte("this is not valid Zstd compressed data")
 
-	_, err := decompressWithZstd(invalidData)
+	_, err := pipeline.DecompressWithZstd(invalidData)
 	if err == nil {
 		t.Error("Expected error when decompressing invalid Zstd data")
 	}
