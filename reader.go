@@ -62,6 +62,8 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 
 // GetChildren returns all direct children of a given data key
 func (k *KV) GetChildren(parentKey hash.Hash) ([]hash.Hash, error) {
+	atomic.AddUint64(&k.readCounter, 1)
+
 	var children []hash.Hash
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
@@ -103,6 +105,8 @@ func (k *KV) GetChildren(parentKey hash.Hash) ([]hash.Hash, error) {
 
 // GetParent returns the parent of a given data key
 func (k *KV) GetParent(childKey hash.Hash) (hash.Hash, error) {
+	atomic.AddUint64(&k.readCounter, 1)
+
 	var parent hash.Hash
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
@@ -393,6 +397,8 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 
 // DataExists checks if data exists for the given key
 func (k *KV) DataExists(key hash.Hash) (bool, error) {
+	atomic.AddUint64(&k.readCounter, 1)
+
 	var exists bool
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
 		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
@@ -414,6 +420,7 @@ func (k *KV) DataExists(key hash.Hash) (bool, error) {
 // ListKeys returns all data keys stored in the database
 func (k *KV) ListKeys() ([]hash.Hash, error) {
 	var keys []hash.Hash
+	atomic.AddUint64(&k.readCounter, 1)
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions

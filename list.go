@@ -3,6 +3,7 @@ package ouroboroskv
 import (
 	"encoding/base64"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/hash"
@@ -64,6 +65,8 @@ func (k *KV) ListStoredData() ([]DataInfo, error) {
 
 // GetDataInfo returns detailed information about a specific data entry
 func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
+	atomic.AddUint64(&k.readCounter, 1)
+
 	var info DataInfo
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
