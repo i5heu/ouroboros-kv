@@ -6,6 +6,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-kv/storage"
 )
 
 // DeleteData removes data and all its associated chunks from the key-value store
@@ -14,21 +15,21 @@ func (k *KV) DeleteData(key hash.Hash) error {
 
 	err := k.badgerDB.Update(func(txn *badger.Txn) error {
 		// First, load metadata to find all chunks that need to be deleted
-		metadata, err := k.loadMetadata(txn, key)
+		metadata, err := storage.LoadMetadata(txn, key)
 		if err != nil {
 			return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
 		}
 
 		// Delete all chunks associated with this data
 		for _, chunkHash := range metadata.ShardHashes {
-			chunks, err := k.loadChunksByHash(txn, chunkHash)
+			chunks, err := storage.LoadShardsByHash(txn, chunkHash)
 			if err != nil {
 				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
 			}
 
 			// Delete each chunk shard
 			for _, chunk := range chunks {
-				chunkKey := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
+				chunkKey := fmt.Sprintf("%s%x_%d", storage.ChunkPrefix, chunk.ChunkHash, chunk.ReedSolomonIndex)
 				err := txn.Delete([]byte(chunkKey))
 				if err != nil {
 					return fmt.Errorf("failed to delete chunk %s: %w", chunkKey, err)
@@ -37,7 +38,7 @@ func (k *KV) DeleteData(key hash.Hash) error {
 		}
 
 		// Delete metadata
-		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
+		metadataKey := fmt.Sprintf("%s%x", storage.MetadataPrefix, key)
 		err = txn.Delete([]byte(metadataKey))
 		if err != nil {
 			return fmt.Errorf("failed to delete metadata for key %x: %w", key, err)

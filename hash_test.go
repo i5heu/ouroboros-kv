@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-kv/storage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,11 +19,11 @@ func TestHashConversion(t *testing.T) {
 	fmt.Printf("Hash as %%v: %v\n", testKey)
 
 	// Try to create the prefix the same way as in storage
-	prefix1 := fmt.Sprintf("%s%x:", PARENT_PREFIX, testKey)
+	prefix1 := fmt.Sprintf("%s%x:", storage.ParentPrefix, testKey)
 	fmt.Printf("Storage prefix: %s\n", prefix1)
 
 	// Try to create the prefix the same way as in query
-	prefix2 := fmt.Sprintf("%s%x:", PARENT_PREFIX, testKey)
+	prefix2 := fmt.Sprintf("%s%x:", storage.ParentPrefix, testKey)
 	fmt.Printf("Query prefix: %s\n", prefix2)
 
 	// They should be the same

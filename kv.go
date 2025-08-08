@@ -6,6 +6,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-kv/storage"
 
 	"github.com/sirupsen/logrus"
 )
@@ -30,33 +31,11 @@ type Data struct {
 	ReedSolomonParityShards uint8       // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 }
 
-// KvData represents a key-value data structure with hierarchical relationships.
-type kvDataHash struct {
-	Key         hash.Hash
-	ShardHashes []hash.Hash // Hash of KvDataShards
-	Parent      hash.Hash   // Key of the parent chunk
-	Children    []hash.Hash // Keys of the child chunks
-}
-
 type kvDataLinked struct {
 	Key      hash.Hash
-	Shards   []kvDataShard // Hash of KvDataShards
-	Parent   hash.Hash     // Key of the parent chunk
-	Children []hash.Hash   // Keys of the child chunks
-}
-
-// kvDataShard represents a chunk of content that will be stored in the key-value store.
-type kvDataShard struct {
-	ChunkHash               hash.Hash // After chunking and before compression, encryption and erasure coding
-	EncodedHash             hash.Hash // After compression, encryption and erasure , including all the metadata in this struct except for EncodedHash
-	ReedSolomonShards       uint8     // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	ReedSolomonParityShards uint8     // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	ReedSolomonIndex        uint8     // Index of the chunk in the Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards and that ReedSolomonShards comes before ReedSolomonParityShards in the index counting)
-	Size                    uint64    // Size of the shard in bytes
-	OriginalSize            uint64    // Size of the original encrypted chunk before Reed-Solomon encoding
-	EncapsulatedKey         []byte    // ML-KEM encapsulated secret for the chunk
-	Nonce                   []byte    // AES-GCM nonce for encryption
-	ChunkContent            []byte    // Content of the chunk after compression, encryption and erasure coding
+	Shards   []storage.Shard // Hash of KvDataShards
+	Parent   hash.Hash       // Key of the parent chunk
+	Children []hash.Hash     // Keys of the child chunks
 }
 
 func Init(crypt *crypt.Crypt, config *Config) (*KV, error) {
