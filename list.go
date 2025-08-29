@@ -7,6 +7,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-kv/storage"
 )
 
 // DataInfo represents detailed information about stored data
@@ -71,7 +72,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
 		// Load metadata
-		metadata, err := k.loadMetadata(txn, key)
+		metadata, err := storage.LoadMetadata(txn, key)
 		if err != nil {
 			return fmt.Errorf("failed to load metadata: %w", err)
 		}
@@ -83,9 +84,9 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		info.NumChunks = len(metadata.ShardHashes)
 
 		// Load chunks to get detailed information
-		var allChunks []kvDataShard
+		var allChunks []storage.Shard
 		for _, chunkHash := range metadata.ShardHashes {
-			chunks, err := k.loadChunksByHash(txn, chunkHash)
+			chunks, err := storage.LoadShardsByHash(txn, chunkHash)
 			if err != nil {
 				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
 			}
@@ -94,7 +95,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 
 		// Calculate sizes and analyze chunks
 		var totalStorageSize uint64
-		chunkMap := make(map[hash.Hash][]kvDataShard)
+		chunkMap := make(map[hash.Hash][]storage.Shard)
 
 		// Group chunks by hash
 		for _, chunk := range allChunks {
