@@ -2,15 +2,16 @@ package ouroboroskv
 
 import (
 	"fmt"
+	"os"
+
+	"log/slog"
 
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
-
-	"github.com/sirupsen/logrus"
 )
 
-var log *logrus.Logger
+var log *slog.Logger
 
 type KV struct {
 	badgerDB     *badger.DB
@@ -61,7 +62,7 @@ type kvDataShard struct {
 
 func Init(crypt *crypt.Crypt, config *Config) (*KV, error) {
 	if config.Logger == nil {
-		config.Logger = logrus.New()
+		config.Logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	}
 
 	log = config.Logger
@@ -88,13 +89,13 @@ func Init(crypt *crypt.Crypt, config *Config) (*KV, error) {
 
 	db, err := badger.Open(opts)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("failed to open badger DB", "error", err)
 		return nil, err
 	}
 
 	err = displayDiskUsage(config.Paths)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("failed to display disk usage", "error", err)
 		return nil, err
 	}
 

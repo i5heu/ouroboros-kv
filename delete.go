@@ -47,10 +47,10 @@ func (k *KV) DeleteData(key hash.Hash) error {
 	})
 
 	if err != nil {
-		log.Errorf("Failed to delete data for key %x: %v", key, err)
+		log.Error("Failed to delete data", "key", fmt.Sprintf("%x", key), "error", err)
 		return fmt.Errorf("failed to delete data: %w", err)
 	}
 
-	log.Debugf("Successfully deleted data with key %x", key)
+	log.Debug("Successfully deleted data", "key", fmt.Sprintf("%x", key))
 	return nil
 }

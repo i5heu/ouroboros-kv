@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"log/slog"
+
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,9 +43,8 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			config := &Config{
 				Paths:            []string{tempDir},
 				MinimumFreeSpace: 1,
-				Logger:           logrus.New(),
+				Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 			}
-			config.Logger.SetLevel(logrus.ErrorLevel) // Reduce noise
 
 			// Initialize KV store
 			kv, err := Init(cryptInstance, config)
@@ -148,9 +148,8 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			config := &Config{
 				Paths:            []string{tempDir},
 				MinimumFreeSpace: 1,
-				Logger:           logrus.New(),
+				Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 			}
-			config.Logger.SetLevel(logrus.ErrorLevel)
 
 			// Initialize KV store
 			kv, err := Init(cryptInstance, config)
@@ -262,9 +261,8 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 			config := &Config{
 				Paths:            []string{kvDir},
 				MinimumFreeSpace: 1,
-				Logger:           logrus.New(),
+				Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 			}
-			config.Logger.SetLevel(logrus.ErrorLevel)
 
 			// Initialize KV store
 			kv, err := Init(cryptInstance, config)

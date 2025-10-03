@@ -7,7 +7,6 @@ import (
 	"syscall"
 
 	"github.com/shirou/gopsutil/disk"
-	"github.com/sirupsen/logrus"
 )
 
 // getDiskUsageStats gets the disk usage statistics of the given path
@@ -66,17 +65,13 @@ func displayDiskUsage(paths []string) error {
 	for _, path := range paths {
 		disk, err := getDiskUsageStats(path)
 		if err != nil {
-			log.WithFields(logrus.Fields{
-				"path": path,
-			}).Errorf("Error retrieving disk usage stats: %v", err)
+			log.Error("Error retrieving disk usage stats", "path", path, "error", err)
 			return err
 		}
 
 		mountPoint, device, err := getDeviceAndMountPoint(path)
 		if err != nil {
-			log.WithFields(logrus.Fields{
-				"path": path,
-			}).Errorf("Error finding device and mount point: %v", err)
+			log.Error("Error finding device and mount point", "path", path, "error", err)
 			return err
 		}
 
@@ -86,22 +81,20 @@ func displayDiskUsage(paths []string) error {
 
 		pathSize, err := calculateDirectorySize(path)
 		if err != nil {
-			log.WithFields(logrus.Fields{
-				"path": path,
-			}).Errorf("Error calculating directory size: %v", err)
+			log.Error("Error calculating directory size", "path", path, "error", err)
 			return err
 		}
 		pathUsage := float64(pathSize) / 1e9
 
-		log.WithFields(logrus.Fields{
-			"Path":        path,
-			"Device":      device,
-			"Mount Point": mountPoint,
-			"Total (GB)":  fmt.Sprintf("%.2f", totalSpace),
-			"Used (GB)":   fmt.Sprintf("%.2f", usedSpace),
-			"Free (GB)":   fmt.Sprintf("%.2f", freeSpace),
-			"Usage by DB": fmt.Sprintf("%.2f", pathUsage),
-		}).Info("Disk Usage information for path")
+		log.Info("Disk Usage information for path",
+			"Path", path,
+			"Device", device,
+			"Mount Point", mountPoint,
+			"Total (GB)", fmt.Sprintf("%.2f", totalSpace),
+			"Used (GB)", fmt.Sprintf("%.2f", usedSpace),
+			"Free (GB)", fmt.Sprintf("%.2f", freeSpace),
+			"Usage by DB", fmt.Sprintf("%.2f", pathUsage),
+		)
 	}
 
 	return nil

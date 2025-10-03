@@ -2,11 +2,13 @@ package ouroboroskv
 
 import (
 	"math/rand"
+	"os"
 	"testing"
+
+	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,9 +38,8 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 		config := &Config{
 			Paths:            []string{dir},
 			MinimumFreeSpace: 1,
-			Logger:           logrus.New(),
+			Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 		}
-		config.Logger.SetLevel(logrus.ErrorLevel)
 		kv, err := Init(cryptInstance, config)
 		require.NoError(b, err)
 		defer kv.Close()
@@ -73,9 +74,8 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 		config := &Config{
 			Paths:            []string{dir},
 			MinimumFreeSpace: 1,
-			Logger:           logrus.New(),
+			Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 		}
-		config.Logger.SetLevel(logrus.ErrorLevel)
 		kv, err := Init(cryptInstance, config)
 		require.NoError(b, err)
 		defer kv.Close()
@@ -117,9 +117,8 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 		config := &Config{
 			Paths:            []string{dir},
 			MinimumFreeSpace: 1,
-			Logger:           logrus.New(),
+			Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 		}
-		config.Logger.SetLevel(logrus.ErrorLevel)
 		kv, err := Init(cryptInstance, config)
 		require.NoError(b, err)
 		defer kv.Close()

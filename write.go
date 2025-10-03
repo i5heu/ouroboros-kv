@@ -77,11 +77,11 @@ func (k *KV) WriteData(data Data) error {
 	// Commit the batch
 	err = wb.Flush()
 	if err != nil {
-		log.Errorf("Failed to write data: %v", err)
+		log.Error("Failed to write data", "error", err)
 		return fmt.Errorf("failed to commit batch: %w", err)
 	}
 
-	log.Debugf("Successfully wrote data with key %x", data.Key)
+	log.Debug("Successfully wrote data", "key", fmt.Sprintf("%x", data.Key))
 	return nil
 }
 
@@ -319,11 +319,11 @@ func (k *KV) BatchWriteData(dataList []Data) error {
 	})
 
 	if err != nil {
-		log.Errorf("Failed to batch write data: %v", err)
+		log.Error("Failed to batch write data", "error", err)
 		return fmt.Errorf("failed to batch write data: %w", err)
 	}
 
-	log.Debugf("Successfully batch wrote %d data objects", len(dataList))
+	log.Debug("Successfully batch wrote data", "count", len(dataList))
 	return nil
 }
 

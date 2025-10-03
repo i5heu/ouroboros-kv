@@ -3,13 +3,13 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
 	ouroboroskv "github.com/i5heu/ouroboros-kv"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -147,11 +147,8 @@ func initKV() (*ouroboroskv.KV, error) {
 	config := &ouroboroskv.Config{
 		Paths:            []string{kvDir},
 		MinimumFreeSpace: 1, // 1GB minimum
-		Logger:           logrus.New(),
+		Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	}
-
-	// Set log level to error to reduce noise further
-	config.Logger.SetLevel(logrus.ErrorLevel)
 
 	// Initialize KV
 	kv, err := ouroboroskv.Init(cryptInstance, config)

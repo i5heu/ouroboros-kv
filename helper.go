@@ -14,7 +14,7 @@ func (k *KV) StartTransactionCounter(paths []string, minimumFreeSpace int) {
 		for range ticker.C {
 			readOps := atomic.SwapUint64(&k.readCounter, 0)
 			writeOps := atomic.SwapUint64(&k.writeCounter, 0)
-			k.config.Logger.Infof("Chunk Read operations/sec: %d, Chunk Write operations/sec: %d\n", readOps, writeOps)
+			k.config.Logger.Info("Chunk operations per second", "read_ops", readOps, "write_ops", writeOps)
 		}
 	}()
 }

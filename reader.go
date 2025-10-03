@@ -52,11 +52,11 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 	})
 
 	if err != nil {
-		log.Errorf("Failed to read data for key %x: %v", key, err)
+		log.Error("Failed to read data", "key", fmt.Sprintf("%x", key), "error", err)
 		return Data{}, fmt.Errorf("failed to read data: %w", err)
 	}
 
-	log.Debugf("Successfully read data with key %x", key)
+	log.Debug("Successfully read data", "key", fmt.Sprintf("%x", key))
 	return data, nil
 }
 
@@ -83,17 +83,17 @@ func (k *KV) GetChildren(parentKey hash.Hash) ([]hash.Hash, error) {
 			prefixLen := len(fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey))
 			if len(keyStr) > prefixLen {
 				childHashHex := keyStr[prefixLen:]
-				log.Debugf("Parsing child hash hex: '%s' (length: %d)", childHashHex, len(childHashHex))
+				log.Debug("Parsing child hash hex", "value", childHashHex, "length", len(childHashHex))
 				if len(childHashHex) == 128 { // 64 bytes = 128 hex chars
 					childHash, err := hash.HashHexadecimal(childHashHex)
 					if err == nil {
 						children = append(children, childHash)
-						log.Debugf("Successfully parsed child hash: %x", childHash)
+						log.Debug("Successfully parsed child hash", "hash", fmt.Sprintf("%x", childHash))
 					} else {
-						log.Debugf("Failed to parse child hash: %v", err)
+						log.Debug("Failed to parse child hash", "error", err)
 					}
 				} else {
-					log.Debugf("Child hash hex wrong length: expected 128, got %d", len(childHashHex))
+					log.Debug("Child hash hex wrong length", "expected", 128, "actual", len(childHashHex))
 				}
 			}
 		}
@@ -387,11 +387,11 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 	})
 
 	if err != nil {
-		log.Errorf("Failed to batch read data: %v", err)
+		log.Error("Failed to batch read data", "error", err)
 		return nil, fmt.Errorf("failed to batch read data: %w", err)
 	}
 
-	log.Debugf("Successfully batch read %d data objects", len(keys))
+	log.Debug("Successfully batch read data", "count", len(keys))
 	return results, nil
 }
 

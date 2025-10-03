@@ -2,16 +2,15 @@ package ouroboroskv
 
 import (
 	"errors"
+	"log/slog"
 	"os"
 	"syscall"
-
-	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
 	Paths            []string // absolute path at the moment only first path is supported
 	MinimumFreeSpace int      // in GB
-	Logger           *logrus.Logger
+	Logger           *slog.Logger
 }
 
 func (sc *Config) checkConfig() error {

@@ -5,9 +5,10 @@ import (
 	"os"
 	"testing"
 
+	"log/slog"
+
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
-	"github.com/sirupsen/logrus"
 )
 
 // setupTestKVForDecryption creates a test KV instance for decryption tests
@@ -25,7 +26,7 @@ func setupTestKVForDecryption(t *testing.T) (*KV, func()) {
 	config := &Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1, // 1GB minimum
-		Logger:           logrus.New(),
+		Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
 	}
 
 	// Initialize KV

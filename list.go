@@ -54,7 +54,7 @@ func (k *KV) ListStoredData() ([]DataInfo, error) {
 	for _, key := range keys {
 		info, err := k.GetDataInfo(key)
 		if err != nil {
-			log.Errorf("Failed to get info for key %x: %v", key, err)
+			log.Error("Failed to get info for key", "key", fmt.Sprintf("%x", key), "error", err)
 			continue
 		}
 		dataInfos = append(dataInfos, info)
