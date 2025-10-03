@@ -11,6 +11,8 @@
 
 A key-value (read hash-data) store implementation in Go that provides advanced data processing features including chunking, erasure coding, encryption, compression, and hierarchical parent-child relationships between keys.
 
+Scope: This project is part of the [OuroborosDB](https://github.com/i5heu/ouroboros-db), it does not handle networking or anything distributed, only local storage.
+
 ## Features
 
 - **CRUD Operations**: Complete Create, Read, Update, Delete functionality

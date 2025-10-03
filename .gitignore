@@ -33,3 +33,4 @@ go.work.sum
 
 tmp/
 ouroboros-kv-data/
+ouroboros.key
