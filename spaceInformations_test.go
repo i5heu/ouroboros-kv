@@ -30,7 +30,6 @@ func TestGetDeviceAndMountPoint_Success(t *testing.T) {
 		t.Skip("no partition with a mountpoint found")
 	}
 
-	// Construct a path that should be under the chosen mountpoint
 	path := filepath.Join(chosen.Mountpoint, "some", "sub", "path")
 	mountPoint, device, err := getDeviceAndMountPoint(path)
 	if err != nil {
@@ -44,11 +43,89 @@ func TestGetDeviceAndMountPoint_Success(t *testing.T) {
 	}
 }
 
-func TestGetDeviceAndMountPoint_RelativePath_NotFound(t *testing.T) {
-	// A relative path should not match any absolute mountpoint, so expect an error.
-	path := "relative/path/that/does/not/start/with/slash"
+func TestGetDeviceAndMountPoint_NotFound(t *testing.T) {
+	path := "/a987wgf9a8wgf/path/that/does/not/exist"
 	_, _, err := getDeviceAndMountPoint(path)
 	if err == nil {
-		t.Fatalf("expected error for relative path %q, got nil", path)
+		t.Fatalf("expected error for path %q, got nil", path)
+	}
+}
+
+func TestGetDeviceAndMountPoint_RootHome(t *testing.T) {
+	path := "/home"
+	_, _, err := getDeviceAndMountPoint(path)
+	if err != nil {
+		t.Fatalf("expected no error for path %q, got nil", path)
+	}
+}
+
+func TestGetDeviceAndMountPoint_TempDir(t *testing.T) {
+	temp := t.TempDir()
+
+	partitions, err := disk.Partitions(true)
+	if err != nil {
+		t.Fatalf("disk.Partitions returned error: %v", err)
+	}
+	if len(partitions) == 0 {
+		t.Skip("no partitions available on this system")
+	}
+
+	var expected *disk.PartitionStat
+	for i := range partitions {
+		p := partitions[i]
+		if p.Mountpoint != "" && contains(temp, p.Mountpoint) {
+			expected = &p
+			break
+		}
+	}
+	if expected == nil {
+		t.Skipf("no partition found for temp dir %q", temp)
+	}
+
+	mountPoint, device, err := getDeviceAndMountPoint(temp)
+	if err != nil {
+		t.Fatalf("expected no error for temp dir %q, got: %v", temp, err)
+	}
+	if mountPoint != expected.Mountpoint {
+		t.Fatalf("expected mount point %q, got %q", expected.Mountpoint, mountPoint)
+	}
+	if device != expected.Device {
+		t.Fatalf("expected device %q, got %q", expected.Device, device)
+	}
+}
+
+func TestGetDeviceAndMountPoint_TempDirNested(t *testing.T) {
+	temp := t.TempDir()
+	nested := filepath.Join(temp, "some", "nested", "path", "that", "does", "not", "exist")
+
+	partitions, err := disk.Partitions(true)
+	if err != nil {
+		t.Fatalf("disk.Partitions returned error: %v", err)
+	}
+	if len(partitions) == 0 {
+		t.Skip("no partitions available on this system")
+	}
+
+	var expected *disk.PartitionStat
+	for i := range partitions {
+		p := partitions[i]
+		if p.Mountpoint != "" && contains(nested, p.Mountpoint) {
+			expected = &p
+			break
+		}
+	}
+	if expected == nil {
+		t.Skipf("no partition found for nested temp path %q", nested)
+	}
+
+	mountPoint, device, err := getDeviceAndMountPoint(nested)
+	if err != nil {
+		t.Fatalf("expected no error for nested temp path %q, got: %v", nested, err)
+	}
+	if mountPoint != expected.Mountpoint {
+		t.Fatalf("expected mount point %q, got %q", expected.Mountpoint, mountPoint)
+	}
+	if device != expected.Device {
+		t.Fatalf("expected device %q, got %q", expected.Device, device)
 	}
 }

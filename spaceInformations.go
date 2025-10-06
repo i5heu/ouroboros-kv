@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/shirou/gopsutil/disk"
@@ -36,10 +37,51 @@ func getDeviceAndMountPoint(path string) (string, string, error) {
 		return "", "", err
 	}
 
-	slog.Info("Partitions found", "partitions", partitions)
+	slog.Debug("Partitions found", "partitions", partitions)
+
+	// Find the absolute path
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", "", err
+	}
+
+	matchPath := absPath
+	foundExisting := false
+	current := absPath
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			current = resolved
+		}
+
+		_, infoErr := os.Stat(current)
+		if infoErr == nil {
+			matchPath = current
+			foundExisting = true
+			break
+		}
+
+		if !os.IsNotExist(infoErr) {
+			return "", "", infoErr
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+
+	if !foundExisting {
+		return "", "", fmt.Errorf("path does not exist: %s", path)
+	}
+
+	if matchPath == string(os.PathSeparator) && matchPath != absPath {
+		return "", "", fmt.Errorf("path does not exist beyond root: %s", path)
+	}
 
 	for _, partition := range partitions {
-		if contains(path, partition.Mountpoint) {
+		if contains(matchPath, partition.Mountpoint) {
 			return partition.Mountpoint, partition.Device, nil
 		}
 	}
@@ -49,7 +91,26 @@ func getDeviceAndMountPoint(path string) (string, string, error) {
 
 // contains checks if a path is within the mount point.
 func contains(path, mountpoint string) bool {
-	return len(path) >= len(mountpoint) && path[:len(mountpoint)] == mountpoint
+	if mountpoint == "" {
+		return false
+	}
+
+	p := filepath.Clean(path)
+	m := filepath.Clean(mountpoint)
+
+	if m == string(os.PathSeparator) {
+		return true
+	}
+
+	if p == m {
+		return true
+	}
+
+	if strings.HasSuffix(m, string(os.PathSeparator)) {
+		m = strings.TrimSuffix(m, string(os.PathSeparator))
+	}
+
+	return strings.HasPrefix(p, m+string(os.PathSeparator))
 }
 
 // displayDiskUsage displays the disk usage information using structured logging
