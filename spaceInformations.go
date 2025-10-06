@@ -2,6 +2,7 @@ package ouroboroskv
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -34,6 +35,8 @@ func getDeviceAndMountPoint(path string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+
+	slog.Info("Partitions found", "partitions", partitions)
 
 	for _, partition := range partitions {
 		if contains(path, partition.Mountpoint) {
