@@ -36,29 +36,27 @@ func TestDebugParentChildStorage(t *testing.T) {
 
 	// Create simple test data
 	parentData := Data{
-		Key:                     hash.HashString("parent-test"),
 		Content:                 []byte("I am the parent"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
+	// Store parent first
+	parentKey, err := kv.WriteData(parentData)
+	require.NoError(t, err)
+	fmt.Printf("Storing parent with key: %x\n", parentKey)
+
 	childData := Data{
-		Key:                     hash.HashString("child-test"),
 		Content:                 []byte("I am child"),
-		Parent:                  parentData.Key,
+		Parent:                  parentKey,
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
-	// Store parent first
-	fmt.Printf("Storing parent with key: %s\n", parentData.Key)
-	err = kv.WriteData(parentData)
-	require.NoError(t, err)
-
 	// Store child
-	fmt.Printf("Storing child with key: %s and parent: %s\n", childData.Key, childData.Parent)
-	err = kv.WriteData(childData)
+	childKey, err := kv.WriteData(childData)
 	require.NoError(t, err)
+	fmt.Printf("Storing child with key: %x and parent: %x\n", childKey, parentKey)
 
 	// Debug: Check what keys exist in the database
 	kv.badgerDB.View(func(txn *badger.Txn) error {
@@ -76,10 +74,10 @@ func TestDebugParentChildStorage(t *testing.T) {
 	})
 
 	// Test GetChildren with debugging
-	fmt.Printf("Looking for children of parent: %s\n", parentData.Key)
+	fmt.Printf("Looking for children of parent: %x\n", parentKey)
 
 	// Create the exact prefix we'll be searching for
-	searchPrefix := fmt.Sprintf("%s%s:", PARENT_PREFIX, parentData.Key)
+	searchPrefix := fmt.Sprintf("%s%x:", PARENT_PREFIX, parentKey)
 	fmt.Printf("Search prefix: %s\n", searchPrefix) // Check if any keys match this prefix
 	kv.badgerDB.View(func(txn *badger.Txn) error {
 		prefix := []byte(searchPrefix)
@@ -100,13 +98,13 @@ func TestDebugParentChildStorage(t *testing.T) {
 		return nil
 	})
 
-	children, err := kv.GetChildren(parentData.Key)
+	children, err := kv.GetChildren(parentKey)
 	require.NoError(t, err)
 	fmt.Printf("Found %d children: %v\n", len(children), children)
 
 	// Let me manually test the parsing logic
 	testKey := "parent:ca554068e9109c5fbb193bdaeec5bcbcfe2754528f3cf52a4078f00f76138b3071dc37aa16b7c727fce21f56b5252c1cf41c26f3605879004aeff5af75e00ce0:bc0a7a7acbebda6b21f2eef5ff2a4f5f1629bd0212e5db0f654555874c00e13421c494db2fdab1abc192b665d851acae71e80d7f4971fe7c83be3a3115786708"
-	prefix := fmt.Sprintf("%s%s:", PARENT_PREFIX, parentData.Key)
+	prefix := fmt.Sprintf("%s%x:", PARENT_PREFIX, parentKey)
 	fmt.Printf("Prefix: '%s'\n", prefix)
 	fmt.Printf("Test key: '%s'\n", testKey)
 	fmt.Printf("Prefix length: %d\n", len(prefix))
@@ -129,8 +127,8 @@ func TestDebugParentChildStorage(t *testing.T) {
 	}
 
 	// Test GetParent
-	fmt.Printf("Looking for parent of child: %s\n", childData.Key)
-	parent, err := kv.GetParent(childData.Key)
+	fmt.Printf("Looking for parent of child: %x\n", childKey)
+	parent, err := kv.GetParent(childKey)
 	require.NoError(t, err)
 	fmt.Printf("Found parent: %s\n", parent)
 }

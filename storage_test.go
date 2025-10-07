@@ -46,9 +46,10 @@ func setupTestKVForStorage(t *testing.T) (*KV, func()) {
 
 // createTestStorageData creates test data for storage tests
 func createTestStorageData() Data {
+	content := []byte("This is test content for storage and retrieval testing. It should be long enough to test the full pipeline.")
+
 	return Data{
-		Key:                     hash.HashString("test-storage-key"),
-		Content:                 []byte("This is test content for storage and retrieval testing. It should be long enough to test the full pipeline."),
+		Content:                 content,
 		Parent:                  hash.HashString("parent-storage-key"),
 		Children:                []hash.Hash{hash.HashString("child1-storage"), hash.HashString("child2-storage")},
 		ReedSolomonShards:       3,
@@ -62,13 +63,17 @@ func TestWriteData(t *testing.T) {
 
 	testData := createTestStorageData()
 
-	err := kv.WriteData(testData)
+	key, err := kv.WriteData(testData)
 	if err != nil {
 		t.Fatalf("WriteData failed: %v", err)
 	}
+	expectedKey := hash.HashBytes(testData.Content)
+	if key != expectedKey {
+		t.Errorf("Generated key mismatch: expected %x, got %x", expectedKey, key)
+	}
 
 	// Verify data exists
-	exists, err := kv.DataExists(testData.Key)
+	exists, err := kv.DataExists(key)
 	if err != nil {
 		t.Fatalf("DataExists failed: %v", err)
 	}
@@ -83,20 +88,20 @@ func TestReadData(t *testing.T) {
 
 	// Write test data
 	originalData := createTestStorageData()
-	err := kv.WriteData(originalData)
+	key, err := kv.WriteData(originalData)
 	if err != nil {
 		t.Fatalf("WriteData failed: %v", err)
 	}
 
 	// Read the data back
-	readData, err := kv.ReadData(originalData.Key)
+	readData, err := kv.ReadData(key)
 	if err != nil {
 		t.Fatalf("ReadData failed: %v", err)
 	}
 
 	// Verify the data matches
-	if readData.Key != originalData.Key {
-		t.Errorf("Key mismatch: expected %v, got %v", originalData.Key, readData.Key)
+	if readData.Key != key {
+		t.Errorf("Key mismatch: expected %v, got %v", key, readData.Key)
 	}
 	if !bytes.Equal(readData.Content, originalData.Content) {
 		t.Errorf("Content mismatch: expected %s, got %s", originalData.Content, readData.Content)
@@ -140,7 +145,6 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			}
 
 			originalData := Data{
-				Key:                     hash.HashString("roundtrip-storage-" + tc.name),
 				Content:                 content,
 				Parent:                  hash.HashString("parent"),
 				Children:                []hash.Hash{hash.HashString("child1")},
@@ -149,13 +153,17 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			}
 
 			// Write
-			err := kv.WriteData(originalData)
+			key, err := kv.WriteData(originalData)
 			if err != nil {
 				t.Fatalf("WriteData failed for %s: %v", tc.name, err)
 			}
+			expectedKey := hash.HashBytes(originalData.Content)
+			if key != expectedKey {
+				t.Errorf("Generated key mismatch for %s: expected %x, got %x", tc.name, expectedKey, key)
+			}
 
 			// Read
-			readData, err := kv.ReadData(originalData.Key)
+			readData, err := kv.ReadData(key)
 			if err != nil {
 				t.Fatalf("ReadData failed for %s: %v", tc.name, err)
 			}
@@ -164,7 +172,7 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			if !bytes.Equal(readData.Content, originalData.Content) {
 				t.Errorf("Round-trip failed for %s: content mismatch", tc.name)
 			}
-			if readData.Key != originalData.Key {
+			if readData.Key != key {
 				t.Errorf("Round-trip failed for %s: key mismatch", tc.name)
 			}
 		})
@@ -188,9 +196,10 @@ func TestDataExists(t *testing.T) {
 	defer cleanup()
 
 	testData := createTestStorageData()
+	expectedKey := hash.HashBytes(testData.Content)
 
 	// Check non-existent data
-	exists, err := kv.DataExists(testData.Key)
+	exists, err := kv.DataExists(expectedKey)
 	if err != nil {
 		t.Fatalf("DataExists failed: %v", err)
 	}
@@ -199,13 +208,16 @@ func TestDataExists(t *testing.T) {
 	}
 
 	// Write data
-	err = kv.WriteData(testData)
+	key, err := kv.WriteData(testData)
 	if err != nil {
 		t.Fatalf("WriteData failed: %v", err)
 	}
+	if key != expectedKey {
+		t.Errorf("Generated key mismatch: expected %x, got %x", expectedKey, key)
+	}
 
 	// Check existing data
-	exists, err = kv.DataExists(testData.Key)
+	exists, err = kv.DataExists(key)
 	if err != nil {
 		t.Fatalf("DataExists failed: %v", err)
 	}
@@ -219,33 +231,45 @@ func TestBatchWriteData(t *testing.T) {
 	defer cleanup()
 
 	// Create multiple test data objects
-	var dataList []Data
+	var (
+		dataList     []Data
+		expectedKeys []hash.Hash
+	)
 	for i := 0; i < 5; i++ {
+		content := []byte("Batch test content " + string(rune('0'+i)))
 		data := Data{
-			Key:                     hash.HashString("batch-test-" + string(rune('0'+i))),
-			Content:                 []byte("Batch test content " + string(rune('0'+i))),
+			Content:                 content,
 			Parent:                  hash.HashString("batch-parent"),
 			Children:                []hash.Hash{},
 			ReedSolomonShards:       2,
 			ReedSolomonParityShards: 1,
 		}
 		dataList = append(dataList, data)
+		expectedKeys = append(expectedKeys, hash.HashBytes(content))
 	}
 
 	// Batch write
-	err := kv.BatchWriteData(dataList)
+	keys, err := kv.BatchWriteData(dataList)
 	if err != nil {
 		t.Fatalf("BatchWriteData failed: %v", err)
 	}
+	if len(keys) != len(dataList) {
+		t.Fatalf("Expected %d keys, got %d", len(dataList), len(keys))
+	}
+	for i, key := range keys {
+		if key != expectedKeys[i] {
+			t.Errorf("Generated key mismatch for item %d: expected %x, got %x", i, expectedKeys[i], key)
+		}
+	}
 
 	// Verify all data exists
-	for _, data := range dataList {
-		exists, err := kv.DataExists(data.Key)
+	for _, key := range keys {
+		exists, err := kv.DataExists(key)
 		if err != nil {
-			t.Fatalf("DataExists failed for key %x: %v", data.Key, err)
+			t.Fatalf("DataExists failed for key %x: %v", key, err)
 		}
 		if !exists {
-			t.Errorf("Data should exist for key %x", data.Key)
+			t.Errorf("Data should exist for key %x", key)
 		}
 	}
 }
@@ -259,7 +283,6 @@ func TestBatchReadData(t *testing.T) {
 	var keys []hash.Hash
 	for i := 0; i < 3; i++ {
 		data := Data{
-			Key:                     hash.HashString("batch-read-test-" + string(rune('0'+i))),
 			Content:                 []byte("Batch read test content " + string(rune('0'+i))),
 			Parent:                  hash.HashString("batch-read-parent"),
 			Children:                []hash.Hash{},
@@ -267,13 +290,13 @@ func TestBatchReadData(t *testing.T) {
 			ReedSolomonParityShards: 1,
 		}
 		originalDataList = append(originalDataList, data)
-		keys = append(keys, data.Key)
 
 		// Write individual data
-		err := kv.WriteData(data)
+		key, err := kv.WriteData(data)
 		if err != nil {
-			t.Fatalf("WriteData failed for key %x: %v", data.Key, err)
+			t.Fatalf("WriteData failed for data %d: %v", i, err)
 		}
+		keys = append(keys, key)
 	}
 
 	// Batch read
@@ -289,8 +312,8 @@ func TestBatchReadData(t *testing.T) {
 
 	for i, readData := range readDataList {
 		originalData := originalDataList[i]
-		if readData.Key != originalData.Key {
-			t.Errorf("Key mismatch for item %d: expected %v, got %v", i, originalData.Key, readData.Key)
+		if readData.Key != keys[i] {
+			t.Errorf("Key mismatch for item %d: expected %v, got %v", i, keys[i], readData.Key)
 		}
 		if !bytes.Equal(readData.Content, originalData.Content) {
 			t.Errorf("Content mismatch for item %d", i)
@@ -306,17 +329,16 @@ func TestListKeys(t *testing.T) {
 	var originalKeys []hash.Hash
 	for i := 0; i < 3; i++ {
 		data := Data{
-			Key:                     hash.HashString("list-test-" + string(rune('0'+i))),
 			Content:                 []byte("List test content " + string(rune('0'+i))),
 			ReedSolomonShards:       2,
 			ReedSolomonParityShards: 1,
 		}
-		originalKeys = append(originalKeys, data.Key)
 
-		err := kv.WriteData(data)
+		key, err := kv.WriteData(data)
 		if err != nil {
 			t.Fatalf("WriteData failed: %v", err)
 		}
+		originalKeys = append(originalKeys, key)
 	}
 
 	// List keys
@@ -349,7 +371,6 @@ func TestWriteDataEmptyContent(t *testing.T) {
 
 	// Test data with empty content
 	testData := Data{
-		Key:                     hash.HashString("empty-content-test"),
 		Content:                 []byte{},
 		Parent:                  hash.HashString("parent"),
 		Children:                []hash.Hash{},
@@ -358,13 +379,17 @@ func TestWriteDataEmptyContent(t *testing.T) {
 	}
 
 	// Write empty content
-	err := kv.WriteData(testData)
+	key, err := kv.WriteData(testData)
 	if err != nil {
 		t.Fatalf("WriteData with empty content failed: %v", err)
 	}
+	expectedKey := hash.HashBytes(testData.Content)
+	if key != expectedKey {
+		t.Errorf("Generated key mismatch for empty content: expected %x, got %x", expectedKey, key)
+	}
 
 	// Read back and verify
-	readData, err := kv.ReadData(testData.Key)
+	readData, err := kv.ReadData(key)
 	if err != nil {
 		t.Fatalf("ReadData failed: %v", err)
 	}
@@ -379,9 +404,12 @@ func TestBatchWriteEmptyList(t *testing.T) {
 	defer cleanup()
 
 	// Test with empty list
-	err := kv.BatchWriteData([]Data{})
+	keys, err := kv.BatchWriteData([]Data{})
 	if err != nil {
 		t.Errorf("BatchWriteData with empty list should not fail: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Errorf("Expected no keys returned for empty batch, got %d", len(keys))
 	}
 }
 

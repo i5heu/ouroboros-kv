@@ -57,12 +57,11 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			_, err = rand.Read(originalData)
 			require.NoError(t, err)
 
-			// Create a hash for the data
-			contentHash := hash.HashBytes(originalData)
+			// Expected key derived from content
+			expectedKey := hash.HashBytes(originalData)
 
 			// Create Data structure
 			data := Data{
-				Key:                     contentHash,
 				Content:                 originalData,
 				Parent:                  hash.Hash{},   // Empty parent
 				Children:                []hash.Hash{}, // No children
@@ -72,17 +71,18 @@ func TestLargeFileRoundTrip(t *testing.T) {
 
 			// Test WriteData
 			t.Logf("Writing %s of data...", tc.name)
-			err = kv.WriteData(data)
+			key, err := kv.WriteData(data)
 			require.NoError(t, err, "Failed to write large data")
+			require.Equal(t, expectedKey, key, "Generated key should match content hash")
 
 			// Test ReadData
 			t.Logf("Reading %s of data back...", tc.name)
-			retrievedData, err := kv.ReadData(contentHash)
+			retrievedData, err := kv.ReadData(key)
 			require.NoError(t, err, "Failed to read large data")
 
 			// Verify data integrity
 			t.Logf("Verifying %s of data integrity...", tc.name)
-			assert.Equal(t, data.Key, retrievedData.Key, "Keys should match")
+			assert.Equal(t, key, retrievedData.Key, "Keys should match")
 			assert.Equal(t, data.Parent, retrievedData.Parent, "Parents should match")
 			// Handle empty slice vs nil slice comparison
 			if len(data.Children) == 0 && len(retrievedData.Children) == 0 {
@@ -274,9 +274,8 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 			content, err := os.ReadFile(virtualFile)
 			require.NoError(t, err)
 
-			contentHash := hash.HashBytes(content)
+			expectedKey := hash.HashBytes(content)
 			data := Data{
-				Key:                     contentHash,
 				Content:                 content,
 				Parent:                  hash.Hash{},
 				Children:                []hash.Hash{},
@@ -285,12 +284,13 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 			}
 
 			// Store the data
-			err = kv.WriteData(data)
+			key, err := kv.WriteData(data)
 			require.NoError(t, err, "Failed to store virtual file")
+			require.Equal(t, expectedKey, key, "Generated key should match content hash")
 
 			// Simulate CLI restore operation
 			t.Logf("Simulating CLI restore for %s file...", tc.name)
-			retrievedData, err := kv.ReadData(contentHash)
+			retrievedData, err := kv.ReadData(key)
 			require.NoError(t, err, "Failed to retrieve virtual file")
 
 			// Verify content integrity

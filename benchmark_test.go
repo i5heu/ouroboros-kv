@@ -22,9 +22,7 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 		for i := 0; i < keyCount; i++ {
 			values[i] = make([]byte, valueSize)
 			rand.Read(values[i])
-			key := hash.HashBytes(values[i])
 			dataObjs[i] = Data{
-				Key:                     key,
 				Content:                 values[i],
 				Parent:                  hash.Hash{},
 				Children:                []hash.Hash{},
@@ -46,7 +44,7 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			err := kv.WriteData(dataObjs[n])
+			_, err := kv.WriteData(dataObjs[n])
 			require.NoError(b, err)
 		}
 	})
@@ -55,12 +53,11 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 		keyCount := b.N
 		values := make([][]byte, keyCount)
 		dataObjs := make([]Data, keyCount)
+		generatedKeys := make([]hash.Hash, keyCount)
 		for i := 0; i < keyCount; i++ {
 			values[i] = make([]byte, valueSize)
 			rand.Read(values[i])
-			key := hash.HashBytes(values[i])
 			dataObjs[i] = Data{
-				Key:                     key,
 				Content:                 values[i],
 				Parent:                  hash.Hash{},
 				Children:                []hash.Hash{},
@@ -82,13 +79,14 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 
 		// Pre-populate DB for read benchmark
 		for i := range dataObjs {
-			err := kv.WriteData(dataObjs[i])
+			key, err := kv.WriteData(dataObjs[i])
 			require.NoError(b, err)
+			generatedKeys[i] = key
 		}
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			read, err := kv.ReadData(dataObjs[n].Key)
+			read, err := kv.ReadData(generatedKeys[n])
 			require.NoError(b, err)
 			require.Equal(b, dataObjs[n].Content, read.Content)
 		}
@@ -101,9 +99,7 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 		for i := 0; i < keyCount; i++ {
 			values[i] = make([]byte, valueSize)
 			rand.Read(values[i])
-			key := hash.HashBytes(values[i])
 			dataObjs[i] = Data{
-				Key:                     key,
 				Content:                 values[i],
 				Parent:                  hash.Hash{},
 				Children:                []hash.Hash{},
@@ -125,7 +121,7 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 
 		// Pre-populate DB for navigation benchmark
 		for i := range dataObjs {
-			err := kv.WriteData(dataObjs[i])
+			_, err := kv.WriteData(dataObjs[i])
 			require.NoError(b, err)
 		}
 

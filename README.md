@@ -63,21 +63,20 @@ func main() {
     }
     defer kv.Close()
     
-    // Store data
+    // Store data (key will be generated from content)
     data := ouroboroskv.Data{
-        Key:                     hash.HashString("my-key"),
         Content:                 []byte("Hello, World!"),
         ReedSolomonShards:       3,
         ReedSolomonParityShards: 2,
     }
-    
-    err = kv.WriteData(data)
+
+    key, err := kv.WriteData(data)
     if err != nil {
         panic(err)
     }
     
     // Read data
-    retrievedData, err := kv.ReadData(hash.HashString("my-key"))
+    retrievedData, err := kv.ReadData(key)
     if err != nil {
         panic(err)
     }
@@ -139,7 +138,7 @@ The system uses BadgerDB as the underlying storage engine with a two-tier key-va
 
 ```go
 type Data struct {
-    Key                     hash.Hash   // Content-based key
+    Key                     hash.Hash   // Content-based key; must be zero when writing new data (returned by WriteData)
     Content                 []byte      // Raw data content
     Parent                  hash.Hash   // Parent entry key
     Children                []hash.Hash // Child entry keys
@@ -166,11 +165,11 @@ The system supports complex parent-child relationships:
 
 ### Core Operations
 
-- `WriteData(data Data) error` - Store data with processing pipeline
+- `WriteData(data Data) (hash.Hash, error)` - Store data with processing pipeline and return generated key
 - `ReadData(key hash.Hash) (Data, error)` - Retrieve and reconstruct data
 - `DeleteData(key hash.Hash) error` - Remove data and clean up references
 - `DataExists(key hash.Hash) (bool, error)` - Check data existence
-- `BatchWriteData(dataList []Data) error` - Bulk write operations
+- `BatchWriteData(dataList []Data) ([]hash.Hash, error)` - Bulk write operations returning generated keys
 
 ### Relationship Operations
 
@@ -228,7 +227,9 @@ go test -run TestComprehensiveRelationships
 go test -run TestLargeFile
 ```
 
+
 ## License
+
 ouroboros-kv (c) 2025 Mia Heidenstedt and contributors  
    
 SPDX-License-Identifier: AGPL-3.0

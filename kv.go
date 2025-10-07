@@ -23,7 +23,7 @@ type KV struct {
 
 // Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
 type Data struct {
-	Key                     hash.Hash   // Key of the content
+	Key                     hash.Hash   // Key of the content, must be empty when writing new data since it will be generated from the content
 	Content                 []byte      // The actual content of the data
 	Parent                  hash.Hash   // Key of the parent value
 	Children                []hash.Hash // Keys of the child values

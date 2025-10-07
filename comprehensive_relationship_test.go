@@ -9,7 +9,6 @@ import (
 	"time"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/hash"
 )
 
 func TestComprehensiveRelationships(t *testing.T) {
@@ -35,78 +34,68 @@ func TestComprehensiveRelationships(t *testing.T) {
 
 	// Store some test data with relationships
 	grandparentData := Data{
-		Key:                     hash.HashString("grandparent-test"),
 		Content:                 []byte("I am the grandparent"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 	parentData := Data{
-		Key:                     hash.HashString("parent-test"),
 		Content:                 []byte("I am the parent"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 	child1Data := Data{
-		Key:                     hash.HashString("child1-test"),
 		Content:                 []byte("I am child 1"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 	child2Data := Data{
-		Key:                     hash.HashString("child2-test"),
 		Content:                 []byte("I am child 2"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 	grandchild1Data := Data{
-		Key:                     hash.HashString("grandchild1-test"),
 		Content:                 []byte("I am grandchild 1"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	// Store grandparent first
-	err = kv.WriteData(grandparentData)
+	grandparentHash, err := kv.WriteData(grandparentData)
 	if err != nil {
 		t.Fatalf("Failed to store grandparent: %v", err)
 	}
-	grandparentHash := grandparentData.Key
 	fmt.Printf("Stored grandparent: %x\n", grandparentHash)
 
 	// Store parent with grandparent as parent
 	parentData.Parent = grandparentHash
-	err = kv.WriteData(parentData)
+	parentHash, err := kv.WriteData(parentData)
 	if err != nil {
 		t.Fatalf("Failed to store parent: %v", err)
 	}
-	parentHash := parentData.Key
 	fmt.Printf("Stored parent: %x (child of %x)\n", parentHash, grandparentHash)
 
 	// Store child1 with parent as parent
 	child1Data.Parent = parentHash
-	err = kv.WriteData(child1Data)
+	child1Hash, err := kv.WriteData(child1Data)
 	if err != nil {
 		t.Fatalf("Failed to store child1: %v", err)
 	}
-	child1Hash := child1Data.Key
 	fmt.Printf("Stored child1: %x (child of %x)\n", child1Hash, parentHash)
 
 	// Store child2 with parent as parent
 	child2Data.Parent = parentHash
-	err = kv.WriteData(child2Data)
+	child2Hash, err := kv.WriteData(child2Data)
 	if err != nil {
 		t.Fatalf("Failed to store child2: %v", err)
 	}
-	child2Hash := child2Data.Key
 	fmt.Printf("Stored child2: %x (child of %x)\n", child2Hash, parentHash)
 
 	// Store grandchild1 with child1 as parent
 	grandchild1Data.Parent = child1Hash
-	err = kv.WriteData(grandchild1Data)
+	grandchild1Hash, err := kv.WriteData(grandchild1Data)
 	if err != nil {
 		t.Fatalf("Failed to store grandchild1: %v", err)
 	}
-	grandchild1Hash := grandchild1Data.Key
 	fmt.Printf("Stored grandchild1: %x (child of %x)\n", grandchild1Hash, child1Hash)
 
 	// Test GetChildren

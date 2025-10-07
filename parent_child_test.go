@@ -50,53 +50,49 @@ func TestParentChildRelationships(t *testing.T) {
 
 	// Create test data with relationships
 	parentData := Data{
-		Key:                     hash.HashString("parent-test"),
 		Content:                 []byte("I am the parent"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	child1Data := Data{
-		Key:                     hash.HashString("child1-test"),
 		Content:                 []byte("I am child 1"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	child2Data := Data{
-		Key:                     hash.HashString("child2-test"),
 		Content:                 []byte("I am child 2"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	grandchildData := Data{
-		Key:                     hash.HashString("grandchild-test"),
 		Content:                 []byte("I am a grandchild"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	// Store the parent first
-	err := kv.WriteData(parentData)
+	parentKey, err := kv.WriteData(parentData)
 	require.NoError(t, err)
 
 	// Store children with parent relationship
-	child1Data.Parent = parentData.Key
-	err = kv.WriteData(child1Data)
+	child1Data.Parent = parentKey
+	child1Key, err := kv.WriteData(child1Data)
 	require.NoError(t, err)
 
-	child2Data.Parent = parentData.Key
-	err = kv.WriteData(child2Data)
+	child2Data.Parent = parentKey
+	child2Key, err := kv.WriteData(child2Data)
 	require.NoError(t, err)
 
 	// Store grandchild with child1 as parent
-	grandchildData.Parent = child1Data.Key
-	err = kv.WriteData(grandchildData)
+	grandchildData.Parent = child1Key
+	grandchildKey, err := kv.WriteData(grandchildData)
 	require.NoError(t, err)
 
 	// Test GetChildren
-	children, err := kv.GetChildren(parentData.Key)
+	children, err := kv.GetChildren(parentKey)
 	require.NoError(t, err)
 	assert.Len(t, children, 2)
 
@@ -104,10 +100,10 @@ func TestParentChildRelationships(t *testing.T) {
 	childFound1 := false
 	childFound2 := false
 	for _, child := range children {
-		if child == child1Data.Key {
+		if child == child1Key {
 			childFound1 = true
 		}
-		if child == child2Data.Key {
+		if child == child2Key {
 			childFound2 = true
 		}
 	}
@@ -115,20 +111,20 @@ func TestParentChildRelationships(t *testing.T) {
 	assert.True(t, childFound2, "Child 2 not found")
 
 	// Test GetParent
-	parent, err := kv.GetParent(child1Data.Key)
+	parent, err := kv.GetParent(child1Key)
 	require.NoError(t, err)
-	assert.Equal(t, parentData.Key, parent)
+	assert.Equal(t, parentKey, parent)
 
-	parent, err = kv.GetParent(child2Data.Key)
+	parent, err = kv.GetParent(child2Key)
 	require.NoError(t, err)
-	assert.Equal(t, parentData.Key, parent)
+	assert.Equal(t, parentKey, parent)
 
-	parent, err = kv.GetParent(grandchildData.Key)
+	parent, err = kv.GetParent(grandchildKey)
 	require.NoError(t, err)
-	assert.Equal(t, child1Data.Key, parent)
+	assert.Equal(t, child1Key, parent)
 
 	// Test GetDescendants
-	descendants, err := kv.GetDescendants(parentData.Key)
+	descendants, err := kv.GetDescendants(parentKey)
 	require.NoError(t, err)
 	assert.Len(t, descendants, 3) // child1, child2, grandchild
 
@@ -137,13 +133,13 @@ func TestParentChildRelationships(t *testing.T) {
 	descFound2 := false
 	descFoundGrand := false
 	for _, desc := range descendants {
-		if desc == child1Data.Key {
+		if desc == child1Key {
 			descFound1 = true
 		}
-		if desc == child2Data.Key {
+		if desc == child2Key {
 			descFound2 = true
 		}
-		if desc == grandchildData.Key {
+		if desc == grandchildKey {
 			descFoundGrand = true
 		}
 	}
@@ -152,7 +148,7 @@ func TestParentChildRelationships(t *testing.T) {
 	assert.True(t, descFoundGrand, "Grandchild not found in descendants")
 
 	// Test GetAncestors
-	ancestors, err := kv.GetAncestors(grandchildData.Key)
+	ancestors, err := kv.GetAncestors(grandchildKey)
 	require.NoError(t, err)
 	assert.Len(t, ancestors, 2) // child1, parent
 
@@ -160,10 +156,10 @@ func TestParentChildRelationships(t *testing.T) {
 	ancFoundChild1 := false
 	ancFoundParent := false
 	for _, anc := range ancestors {
-		if anc == child1Data.Key {
+		if anc == child1Key {
 			ancFoundChild1 = true
 		}
-		if anc == parentData.Key {
+		if anc == parentKey {
 			ancFoundParent = true
 		}
 	}
@@ -174,7 +170,7 @@ func TestParentChildRelationships(t *testing.T) {
 	roots, err := kv.GetRoots()
 	require.NoError(t, err)
 	assert.Len(t, roots, 1)
-	assert.Equal(t, parentData.Key, roots[0])
+	assert.Equal(t, parentKey, roots[0])
 }
 
 func TestBatchWriteWithRelationships(t *testing.T) {
@@ -183,44 +179,51 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 
 	// Create test data
 	parentData := Data{
-		Key:                     hash.HashString("batch-parent"),
 		Content:                 []byte("Batch parent"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
+	parentKey := hash.HashBytes(parentData.Content)
+
 	child1Data := Data{
-		Key:                     hash.HashString("batch-child1"),
 		Content:                 []byte("Batch child 1"),
-		Parent:                  parentData.Key,
+		Parent:                  parentKey,
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	child2Data := Data{
-		Key:                     hash.HashString("batch-child2"),
 		Content:                 []byte("Batch child 2"),
-		Parent:                  parentData.Key,
+		Parent:                  parentKey,
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	// Batch write all data
 	dataList := []Data{parentData, child1Data, child2Data}
-	err := kv.BatchWriteData(dataList)
+	keys, err := kv.BatchWriteData(dataList)
 	require.NoError(t, err)
+	require.Len(t, keys, len(dataList))
+	parentKeyOut := keys[0]
+	child1KeyOut := keys[1]
+	child2KeyOut := keys[2]
 
 	// Verify relationships
-	children, err := kv.GetChildren(parentData.Key)
+	children, err := kv.GetChildren(parentKeyOut)
 	require.NoError(t, err)
 	assert.Len(t, children, 2)
 
-	parent, err := kv.GetParent(child1Data.Key)
+	parent, err := kv.GetParent(child1KeyOut)
 	require.NoError(t, err)
-	assert.Equal(t, parentData.Key, parent)
+	assert.Equal(t, parentKeyOut, parent)
+
+	parent, err = kv.GetParent(child2KeyOut)
+	require.NoError(t, err)
+	assert.Equal(t, parentKeyOut, parent)
 
 	roots, err := kv.GetRoots()
 	require.NoError(t, err)
 	assert.Len(t, roots, 1)
-	assert.Equal(t, parentData.Key, roots[0])
+	assert.Equal(t, parentKeyOut, roots[0])
 }

@@ -20,13 +20,19 @@ const (
 
 // WriteData encodes and stores the given Data in the key-value store
 // It uses the encoding pipeline to create encrypted, compressed, and erasure-coded chunks
-func (k *KV) WriteData(data Data) error {
+func (k *KV) WriteData(data Data) (hash.Hash, error) {
 	atomic.AddUint64(&k.writeCounter, 1)
+
+	if !isEmptyHash(data.Key) {
+		return hash.Hash{}, fmt.Errorf("data key must be zero value; it will be generated from content")
+	}
+
+	data.Key = hash.HashBytes(data.Content) // Calculate the key hash
 
 	// Use the encoding pipeline to process the data
 	encoded, err := k.encodeDataPipeline(data)
 	if err != nil {
-		return fmt.Errorf("failed to encode data: %w", err)
+		return hash.Hash{}, fmt.Errorf("failed to encode data: %w", err)
 	}
 
 	// Create metadata structure with chunk hashes
@@ -55,13 +61,13 @@ func (k *KV) WriteData(data Data) error {
 	// Store metadata
 	err = k.storeMetadataWithBatch(wb, metadata)
 	if err != nil {
-		return fmt.Errorf("failed to store metadata: %w", err)
+		return hash.Hash{}, fmt.Errorf("failed to store metadata: %w", err)
 	}
 
 	// Store parent-child relationships
 	err = k.storeParentChildRelationships(wb, metadata.Key, metadata.Parent, metadata.Children)
 	if err != nil {
-		return fmt.Errorf("failed to store parent-child relationships: %w", err)
+		return hash.Hash{}, fmt.Errorf("failed to store parent-child relationships: %w", err)
 	}
 
 	// Store all chunks
@@ -69,7 +75,7 @@ func (k *KV) WriteData(data Data) error {
 		for _, chunk := range chunks {
 			err := k.storeChunkWithBatch(wb, chunk)
 			if err != nil {
-				return fmt.Errorf("failed to store chunk: %w", err)
+				return hash.Hash{}, fmt.Errorf("failed to store chunk: %w", err)
 			}
 		}
 	}
@@ -78,11 +84,11 @@ func (k *KV) WriteData(data Data) error {
 	err = wb.Flush()
 	if err != nil {
 		log.Error("Failed to write data", "error", err)
-		return fmt.Errorf("failed to commit batch: %w", err)
+		return hash.Hash{}, fmt.Errorf("failed to commit batch: %w", err)
 	}
 
 	log.Debug("Successfully wrote data", "key", fmt.Sprintf("%x", data.Key))
-	return nil
+	return data.Key, nil
 }
 
 // storeMetadata serializes and stores KvDataHash metadata
@@ -251,24 +257,33 @@ func isEmptyHash(h hash.Hash) bool {
 }
 
 // BatchWriteData writes multiple Data objects in a single batch operation
-func (k *KV) BatchWriteData(dataList []Data) error {
+func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 	if len(dataList) == 0 {
-		return nil
+		return []hash.Hash{}, nil
 	}
 
 	atomic.AddUint64(&k.writeCounter, uint64(len(dataList)))
 
 	// Process all data through encoding pipeline first
-	var encodedData []kvDataLinked
-	var allMetadata []kvDataHash
-	var allChunks []kvDataShard
+	var (
+		allMetadata []kvDataHash
+		allChunks   []kvDataShard
+		keys        []hash.Hash
+	)
 
 	for _, data := range dataList {
+
+		if !isEmptyHash(data.Key) {
+			return nil, fmt.Errorf("data key must be zero value; it will be generated from content")
+		}
+
+		data.Key = hash.HashBytes(data.Content) // Calculate the key hash
+
 		encoded, err := k.encodeDataPipeline(data)
 		if err != nil {
-			return fmt.Errorf("failed to encode data with key %x: %w", data.Key, err)
+			return nil, fmt.Errorf("failed to encode data with key %x: %w", data.Key, err)
 		}
-		encodedData = append(encodedData, encoded)
+		keys = append(keys, data.Key)
 
 		// Create metadata
 		var chunkHashes []hash.Hash
@@ -320,11 +335,11 @@ func (k *KV) BatchWriteData(dataList []Data) error {
 
 	if err != nil {
 		log.Error("Failed to batch write data", "error", err)
-		return fmt.Errorf("failed to batch write data: %w", err)
+		return nil, fmt.Errorf("failed to batch write data: %w", err)
 	}
 
 	log.Debug("Successfully batch wrote data", "count", len(dataList))
-	return nil
+	return keys, nil
 }
 
 // storeParentChildRelationshipsTxn stores parent-child relationships using a transaction
