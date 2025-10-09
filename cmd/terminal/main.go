@@ -21,12 +21,14 @@ const (
   %s <file>                    Store file and return base64 hash
   %s -d <base64_hash>          Delete data by base64 hash
   %s -r <base64_hash>          Restore data by base64 hash (outputs to stdout)
+	%s -v                        Validate stored data integrity
   %s -ls                       List all stored data with detailed information
 
 Examples:
   %s document.pdf              # Store file, returns hash
   %s -d SGVsbG8gV29ybGQ=        # Delete data by hash
   %s -r SGVsbG8gV29ybGQ=        # Restore data by hash
+	%s -v                       # Validate stored data
   %s -ls                       # List all stored data
 
 Note: 
@@ -36,11 +38,20 @@ Note:
 `
 )
 
+func printUsage(progName string) {
+	fmt.Fprintf(
+		os.Stderr,
+		USAGE,
+		progName, progName, progName, progName, progName,
+		progName, progName, progName, progName, progName,
+	)
+}
+
 func main() {
 	progName := filepath.Base(os.Args[0])
 
 	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
+		printUsage(progName)
 		os.Exit(1)
 	}
 
@@ -57,7 +68,7 @@ func main() {
 	case "-d":
 		if len(os.Args) != 3 {
 			fmt.Fprintf(os.Stderr, "Error: -d requires a base64 hash argument\n")
-			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
+			printUsage(progName)
 			os.Exit(1)
 		}
 		err := deleteFile(kv, os.Args[2])
@@ -70,7 +81,7 @@ func main() {
 	case "-r":
 		if len(os.Args) != 3 {
 			fmt.Fprintf(os.Stderr, "Error: -r requires a base64 hash argument\n")
-			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
+			printUsage(progName)
 			os.Exit(1)
 		}
 		err := restoreFile(kv, os.Args[2])
@@ -82,20 +93,31 @@ func main() {
 	case "-ls":
 		if len(os.Args) != 2 {
 			fmt.Fprintf(os.Stderr, "Error: -ls does not take any arguments\n")
-			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
+			printUsage(progName)
 			os.Exit(1)
 		}
-		err := listStoredData(kv)
-		if err != nil {
+		if err := listStoredData(kv); err != nil {
 			fmt.Fprintf(os.Stderr, "Error listing stored data: %v\n", err)
 			os.Exit(1)
 		}
+
+	case "-v":
+		if len(os.Args) != 2 {
+			fmt.Fprintf(os.Stderr, "Error: -v does not take any arguments\n")
+			printUsage(progName)
+			os.Exit(1)
+		}
+		if err := validateData(kv); err != nil {
+			fmt.Fprintf(os.Stderr, "Validation failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Validation completed successfully")
 
 	default:
 		// Store file
 		if len(os.Args) != 2 {
 			fmt.Fprintf(os.Stderr, "Error: Too many arguments for store operation\n")
-			fmt.Fprintf(os.Stderr, USAGE, progName, progName, progName, progName, progName, progName, progName, progName)
+			printUsage(progName)
 			os.Exit(1)
 		}
 
@@ -331,6 +353,47 @@ func listStoredData(kv *ouroboroskv.KV) error {
 	fmt.Printf("  Content chunks: %d\n", totalContentChunks)
 	fmt.Printf("  Metadata chunks: %d\n", totalMetadataChunks)
 	fmt.Printf("  All chunks: %d\n", totalContentChunks+totalMetadataChunks)
+
+	return nil
+}
+
+func validateData(kv *ouroboroskv.KV) error {
+	results, err := kv.ValidateAll()
+	if err != nil {
+		return err
+	}
+
+	if len(results) == 0 {
+		fmt.Println("No data stored in the database.")
+		return nil
+	}
+
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "STATUS\tHASH (BASE64)\tDETAILS")
+
+	var passed, failed int
+	for _, res := range results {
+		status := "OK"
+		detail := ""
+		if res.Err != nil {
+			status = "FAIL"
+			detail = res.Err.Error()
+			failed++
+		} else {
+			passed++
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", status, shortenHash(res.KeyBase64), detail)
+	}
+
+	if err := tw.Flush(); err != nil {
+		return fmt.Errorf("failed to render validation table: %w", err)
+	}
+
+	fmt.Printf("\nValidated %d entries: %d passed, %d failed\n", len(results), passed, failed)
+
+	if failed > 0 {
+		return fmt.Errorf("%d entries failed validation", failed)
+	}
 
 	return nil
 }
