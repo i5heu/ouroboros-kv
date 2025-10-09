@@ -1,8 +1,11 @@
 package ouroboroskv
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/hash"
@@ -28,7 +31,11 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("data key must be zero value; it will be generated from content")
 	}
 
-	data.Key = hash.HashBytes(data.Content) // Calculate the key hash
+	if data.Created == 0 {
+		data.Created = time.Now().Unix()
+	}
+
+	data.Key = computeDataKey(data) // Calculate the key hash from all relevant fields
 
 	// Use the encoding pipeline to process the data
 	encoded, err := k.encodeDataPipeline(data)
@@ -61,7 +68,8 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		ShardHashes:     contentHashes,
 		MetaShardHashes: metaHashes,
 		Parent:          encoded.Parent,
-		Children:        encoded.Children,
+		Created:         encoded.Created,
+		Aliases:         encoded.Aliases,
 	}
 
 	// Use WriteBatch for better handling of large transactions
@@ -79,7 +87,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 	}
 
 	// Store parent-child relationships
-	err = k.storeParentChildRelationships(wb, metadata.Key, metadata.Parent, metadata.Children)
+	err = k.storeParentChildRelationships(wb, metadata.Key, metadata.Parent, encoded.Children)
 	if err != nil {
 		return hash.Hash{}, fmt.Errorf("failed to store parent-child relationships: %w", err)
 	}
@@ -117,8 +125,9 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 func (k *KV) storeMetadata(txn *badger.Txn, metadata kvDataHash) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
-		Key:    metadata.Key[:],
-		Parent: metadata.Parent[:],
+		Key:     metadata.Key[:],
+		Parent:  metadata.Parent[:],
+		Created: metadata.Created,
 	}
 
 	// Convert chunk hashes
@@ -126,9 +135,8 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata kvDataHash) error {
 		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
 	}
 
-	// Convert children hashes
-	for _, child := range metadata.Children {
-		protoMetadata.Children = append(protoMetadata.Children, child[:])
+	for _, alias := range metadata.Aliases {
+		protoMetadata.Aliases = append(protoMetadata.Aliases, alias[:])
 	}
 
 	// Serialize to protobuf
@@ -176,8 +184,9 @@ func (k *KV) storeChunk(txn *badger.Txn, chunk kvDataShard) error {
 func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
-		Key:    metadata.Key[:],
-		Parent: metadata.Parent[:],
+		Key:     metadata.Key[:],
+		Parent:  metadata.Parent[:],
+		Created: metadata.Created,
 	}
 
 	// Convert chunk hashes
@@ -185,9 +194,8 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) 
 		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
 	}
 
-	// Convert children hashes
-	for _, child := range metadata.Children {
-		protoMetadata.Children = append(protoMetadata.Children, child[:])
+	for _, alias := range metadata.Aliases {
+		protoMetadata.Aliases = append(protoMetadata.Aliases, alias[:])
 	}
 
 	// Serialize to protobuf
@@ -298,6 +306,37 @@ func isEmptyHash(h hash.Hash) bool {
 	return h == empty
 }
 
+func canonicalDataKeyPayload(data Data) []byte {
+	var buf bytes.Buffer
+	writeBytesWithLength(&buf, data.MetaData)
+	writeBytesWithLength(&buf, data.Content)
+	buf.Write(data.Parent[:])
+	buf.WriteByte(data.ReedSolomonShards)
+	buf.WriteByte(data.ReedSolomonParityShards)
+
+	var createdBytes [8]byte
+	binary.BigEndian.PutUint64(createdBytes[:], uint64(data.Created))
+	buf.Write(createdBytes[:])
+
+	var aliasCount [4]byte
+	binary.BigEndian.PutUint32(aliasCount[:], uint32(len(data.Aliases)))
+	buf.Write(aliasCount[:])
+	for _, alias := range data.Aliases {
+		buf.Write(alias[:])
+	}
+
+	return buf.Bytes()
+}
+
+func writeBytesWithLength(buf *bytes.Buffer, payload []byte) {
+	var lengthBytes [8]byte
+	binary.BigEndian.PutUint64(lengthBytes[:], uint64(len(payload)))
+	buf.Write(lengthBytes[:])
+	if len(payload) > 0 {
+		buf.Write(payload)
+	}
+}
+
 // BatchWriteData writes multiple Data objects in a single batch operation
 func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 	if len(dataList) == 0 {
@@ -308,9 +347,10 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 
 	// Process all data through encoding pipeline first
 	var (
-		allMetadata []kvDataHash
-		allChunks   []kvDataShard
-		keys        []hash.Hash
+		allMetadata      []kvDataHash
+		allChunks        []kvDataShard
+		metadataChildren [][]hash.Hash
+		keys             []hash.Hash
 	)
 
 	for _, data := range dataList {
@@ -319,7 +359,11 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			return nil, fmt.Errorf("data key must be zero value; it will be generated from content")
 		}
 
-		data.Key = hash.HashBytes(data.Content) // Calculate the key hash
+		if data.Created == 0 {
+			data.Created = time.Now().Unix()
+		}
+
+		data.Key = computeDataKey(data)
 
 		encoded, err := k.encodeDataPipeline(data)
 		if err != nil {
@@ -353,15 +397,17 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			ShardHashes:     contentHashes,
 			MetaShardHashes: metaHashes,
 			Parent:          encoded.Parent,
-			Children:        encoded.Children,
+			Created:         encoded.Created,
+			Aliases:         encoded.Aliases,
 		}
 		allMetadata = append(allMetadata, metadata)
+		metadataChildren = append(metadataChildren, encoded.Children)
 	}
 
 	// Perform batch write
 	err := k.badgerDB.Update(func(txn *badger.Txn) error {
 		// Store all metadata
-		for _, metadata := range allMetadata {
+		for idx, metadata := range allMetadata {
 			err := k.storeMetadata(txn, metadata)
 			if err != nil {
 				return fmt.Errorf("failed to store metadata for key %x: %w", metadata.Key, err)
@@ -372,7 +418,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			}
 
 			// Store parent-child relationships
-			err = k.storeParentChildRelationshipsTxn(txn, metadata.Key, metadata.Parent, metadata.Children)
+			err = k.storeParentChildRelationshipsTxn(txn, metadata.Key, metadata.Parent, metadataChildren[idx])
 			if err != nil {
 				return fmt.Errorf("failed to store parent-child relationships for key %x: %w", metadata.Key, err)
 			}

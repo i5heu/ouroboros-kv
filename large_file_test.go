@@ -57,26 +57,25 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			_, err = rand.Read(originalData)
 			require.NoError(t, err)
 
-			// Expected key derived from content
-			expectedKey := hash.HashBytes(originalData)
-
 			// Create Data structure
 			metadata := []byte(fmt.Sprintf("metadata-%s", tc.name))
 
-			data := Data{
+			data := applyTestDefaults(Data{
 				Content:                 originalData,
 				MetaData:                metadata,
 				Parent:                  hash.Hash{},   // Empty parent
 				Children:                []hash.Hash{}, // No children
 				ReedSolomonShards:       8,
 				ReedSolomonParityShards: 4,
-			}
+			})
+
+			expectedKey := expectedKeyForData(data)
 
 			// Test WriteData
 			t.Logf("Writing %s of data...", tc.name)
 			key, err := kv.WriteData(data)
 			require.NoError(t, err, "Failed to write large data")
-			require.Equal(t, expectedKey, key, "Generated key should match content hash")
+			require.Equal(t, expectedKey, key, "Generated key should match canonical hash")
 
 			// Test ReadData
 			t.Logf("Reading %s of data back...", tc.name)
@@ -88,6 +87,8 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			assert.Equal(t, key, retrievedData.Key, "Keys should match")
 			assert.Equal(t, data.Parent, retrievedData.Parent, "Parents should match")
 			assert.Equal(t, data.MetaData, retrievedData.MetaData, "Metadata should match")
+			assert.Equal(t, data.Created, retrievedData.Created, "Created timestamp should match")
+			assert.Empty(t, retrievedData.Aliases, "Aliases should be empty by default")
 			// Handle empty slice vs nil slice comparison
 			if len(data.Children) == 0 && len(retrievedData.Children) == 0 {
 				// Both are empty, this is fine
@@ -166,19 +167,17 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			_, err = rand.Read(originalData)
 			require.NoError(t, err)
 
-			// Create a hash for the data
-			contentHash := hash.HashBytes(originalData)
-
 			// Create Data structure
-			data := Data{
-				Key:                     contentHash,
+			data := applyTestDefaults(Data{
 				MetaData:                []byte(fmt.Sprintf("metadata-%s", tc.name)),
 				Content:                 originalData,
 				Parent:                  hash.Hash{},
 				Children:                []hash.Hash{},
 				ReedSolomonShards:       8,
 				ReedSolomonParityShards: 4,
-			}
+			})
+			expectedKey := expectedKeyForData(data)
+			data.Key = expectedKey
 
 			// Test encoding pipeline
 			t.Logf("Testing encoding pipeline...")
@@ -189,6 +188,8 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			assert.Equal(t, data.Key, encoded.Key, "Key should be preserved in encoding")
 			assert.Equal(t, data.Parent, encoded.Parent, "Parent should be preserved in encoding")
 			assert.Equal(t, data.Children, encoded.Children, "Children should be preserved in encoding")
+			assert.Equal(t, data.Created, encoded.Created, "Created should be preserved in encoding")
+			assert.Equal(t, data.Aliases, encoded.Aliases, "Aliases should be preserved in encoding")
 			assert.NotEmpty(t, encoded.Shards, "Encoded data should have chunks")
 
 			t.Logf("Encoded into %d chunks", len(encoded.Shards))
@@ -202,6 +203,8 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			assert.Equal(t, data.Key, decoded.Key, "Key should match after decode")
 			assert.Equal(t, data.Parent, decoded.Parent, "Parent should match after decode")
 			assert.Equal(t, data.Children, decoded.Children, "Children should match after decode")
+			assert.Equal(t, data.Created, decoded.Created, "Created should match after decode")
+			assert.Equal(t, data.Aliases, decoded.Aliases, "Aliases should match after decode")
 			assert.Equal(t, data.MetaData, decoded.MetaData, "Metadata should match after decode")
 			assert.Equal(t, data.ReedSolomonShards, decoded.ReedSolomonShards, "ReedSolomonShards should match after decode")
 			assert.Equal(t, data.ReedSolomonParityShards, decoded.ReedSolomonParityShards, "ReedSolomonParityShards should match after decode")
@@ -280,24 +283,27 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 			content, err := os.ReadFile(virtualFile)
 			require.NoError(t, err)
 
-			expectedKey := hash.HashBytes(content)
-			data := Data{
+			data := applyTestDefaults(Data{
 				Content:                 content,
 				Parent:                  hash.Hash{},
 				Children:                []hash.Hash{},
 				ReedSolomonShards:       8,
 				ReedSolomonParityShards: 4,
-			}
+			})
+			expectedKey := expectedKeyForData(data)
 
 			// Store the data
 			key, err := kv.WriteData(data)
 			require.NoError(t, err, "Failed to store virtual file")
-			require.Equal(t, expectedKey, key, "Generated key should match content hash")
+			require.Equal(t, expectedKey, key, "Generated key should match canonical hash")
 
 			// Simulate CLI restore operation
 			t.Logf("Simulating CLI restore for %s file...", tc.name)
 			retrievedData, err := kv.ReadData(key)
 			require.NoError(t, err, "Failed to retrieve virtual file")
+			require.Equal(t, key, retrievedData.Key, "Retrieved key should match")
+			require.Equal(t, data.Created, retrievedData.Created, "Created timestamp should match")
+			assert.Empty(t, retrievedData.Aliases, "Aliases should be empty by default")
 
 			// Verify content integrity
 			if !bytes.Equal(originalData, retrievedData.Content) {

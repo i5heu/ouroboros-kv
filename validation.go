@@ -26,9 +26,9 @@ func (k *KV) ValidateKey(key hash.Hash) error {
 		return fmt.Errorf("failed to read data for validation: %w", err)
 	}
 
-	computed := hash.HashBytes(data.Content)
+	computed := computeDataKey(data)
 	if computed != key {
-		return fmt.Errorf("content hash mismatch: expected %x, got %x", key, computed)
+		return fmt.Errorf("data hash mismatch: expected %x, got %x", key, computed)
 	}
 
 	return nil

@@ -47,15 +47,16 @@ func setupTestKV(t *testing.T) (*KV, func()) {
 
 // createTestData creates test data for encryption pipeline tests
 func createTestData() Data {
-	return Data{
-		Key:                     hash.HashString("test-key"),
+	data := applyTestDefaults(Data{
 		MetaData:                []byte("Test metadata"),
 		Content:                 []byte("This is test content for the encryption pipeline. It should be long enough to test chunking functionality."),
 		Parent:                  hash.HashString("parent-key"),
 		Children:                []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
-	}
+	})
+	data.Key = expectedKeyForData(data)
+	return data
 }
 
 func TestEncodeDataPipeline(t *testing.T) {
@@ -80,6 +81,14 @@ func TestEncodeDataPipeline(t *testing.T) {
 
 	if len(result.Children) != len(testData.Children) {
 		t.Errorf("Expected %d children, got %d", len(testData.Children), len(result.Children))
+	}
+
+	if result.Created != testData.Created {
+		t.Errorf("Expected created %d, got %d", testData.Created, result.Created)
+	}
+
+	if len(result.Aliases) != len(testData.Aliases) {
+		t.Errorf("Expected %d aliases, got %d", len(testData.Aliases), len(result.Aliases))
 	}
 
 	// Verify chunks were created

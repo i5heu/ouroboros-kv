@@ -54,3 +54,7 @@ func deserializeHashesFromBytes(data []byte) ([]hash.Hash, error) {
 
 	return hashes, nil
 }
+
+func computeDataKey(data Data) hash.Hash {
+	return hash.HashBytes(canonicalDataKeyPayload(data))
+}

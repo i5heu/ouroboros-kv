@@ -23,6 +23,11 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 			return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
 		}
 
+		children, err := collectChildrenForTxn(txn, metadata.Key)
+		if err != nil {
+			return fmt.Errorf("failed to load children for key %x: %w", key, err)
+		}
+
 		// Load all content chunks for this data
 		var contentChunks []kvDataShard
 		for _, chunkHash := range metadata.ShardHashes {
@@ -51,7 +56,9 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 			MetaShards:      metadataChunks,
 			MetaChunkHashes: metadata.MetaShardHashes,
 			Parent:          metadata.Parent,
-			Children:        metadata.Children,
+			Children:        children,
+			Created:         metadata.Created,
+			Aliases:         metadata.Aliases,
 		}
 
 		// Use decoding pipeline to reconstruct original data
@@ -80,37 +87,9 @@ func (k *KV) GetChildren(parentKey hash.Hash) ([]hash.Hash, error) {
 	var children []hash.Hash
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
-		prefix := []byte(fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey))
-
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false // We only need keys
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			key := item.Key()
-
-			// Extract child hash from key: parent:PARENT_HASH:CHILD_HASH
-			keyStr := string(key)
-			prefixLen := len(fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey))
-			if len(keyStr) > prefixLen {
-				childHashHex := keyStr[prefixLen:]
-				log.Debug("Parsing child hash hex", "value", childHashHex, "length", len(childHashHex))
-				if len(childHashHex) == 128 { // 64 bytes = 128 hex chars
-					childHash, err := hash.HashHexadecimal(childHashHex)
-					if err == nil {
-						children = append(children, childHash)
-						log.Debug("Successfully parsed child hash", "hash", fmt.Sprintf("%x", childHash))
-					} else {
-						log.Debug("Failed to parse child hash", "error", err)
-					}
-				} else {
-					log.Debug("Child hash hex wrong length", "expected", 128, "actual", len(childHashHex))
-				}
-			}
-		}
-		return nil
+		var err error
+		children, err = collectChildrenForTxn(txn, parentKey)
+		return err
 	})
 
 	return children, err
@@ -249,7 +228,8 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 
 	// Convert back to Go struct
 	metadata := kvDataHash{
-		Key: key, // We already know the key
+		Key:     key, // We already know the key
+		Created: protoMetadata.Created,
 	}
 
 	// Convert parent
@@ -266,12 +246,11 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 		}
 	}
 
-	// Convert children
-	for _, childBytes := range protoMetadata.Children {
-		if len(childBytes) == 64 {
-			var child hash.Hash
-			copy(child[:], childBytes)
-			metadata.Children = append(metadata.Children, child)
+	for _, aliasBytes := range protoMetadata.Aliases {
+		if len(aliasBytes) == 64 {
+			var alias hash.Hash
+			copy(alias[:], aliasBytes)
+			metadata.Aliases = append(metadata.Aliases, alias)
 		}
 	}
 
@@ -357,6 +336,40 @@ func (k *KV) loadChunksByHash(txn *badger.Txn, chunkHash hash.Hash) ([]kvDataSha
 	return chunks, nil
 }
 
+func collectChildrenForTxn(txn *badger.Txn, parentKey hash.Hash) ([]hash.Hash, error) {
+	prefixStr := fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey)
+	prefix := []byte(prefixStr)
+
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchValues = false
+	it := txn.NewIterator(opts)
+	defer it.Close()
+
+	var children []hash.Hash
+
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		key := it.Item().Key()
+		keyStr := string(key)
+		if len(keyStr) <= len(prefixStr) {
+			continue
+		}
+
+		childHashHex := keyStr[len(prefixStr):]
+		if len(childHashHex) != 128 {
+			continue
+		}
+
+		childHash, err := hash.HashHexadecimal(childHashHex)
+		if err != nil {
+			continue
+		}
+
+		children = append(children, childHash)
+	}
+
+	return children, nil
+}
+
 // BatchReadData reads multiple data objects by their keys
 func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 	if len(keys) == 0 {
@@ -372,6 +385,11 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			metadata, err := k.loadMetadata(txn, key)
 			if err != nil {
 				return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
+			}
+
+			children, err := collectChildrenForTxn(txn, metadata.Key)
+			if err != nil {
+				return fmt.Errorf("failed to load children for key %x: %w", key, err)
 			}
 
 			// Load all chunks
@@ -401,7 +419,9 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 				MetaShards:      metadataChunks,
 				MetaChunkHashes: metadata.MetaShardHashes,
 				Parent:          metadata.Parent,
-				Children:        metadata.Children,
+				Children:        children,
+				Created:         metadata.Created,
+				Aliases:         metadata.Aliases,
 			}
 
 			// Decode data

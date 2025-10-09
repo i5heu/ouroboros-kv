@@ -23,13 +23,15 @@ type KV struct {
 
 // Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
 type Data struct {
-	Key                     hash.Hash   // Key of the content, must be empty when writing new data since it will be generated from the content
+	Key                     hash.Hash   // Key is derived from all fields except Children; must be zero when writing new data because it is generated from the content
 	MetaData                []byte      // Additional metadata associated with the data (stored securely but not part of the key)
 	Content                 []byte      // The actual content of the data
 	Parent                  hash.Hash   // Key of the parent value
-	Children                []hash.Hash // Keys of the child values
+	Children                []hash.Hash // Keys of the child values (stored dynamically outside of metadata)
 	ReedSolomonShards       uint8       // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	ReedSolomonParityShards uint8       // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
+	ReedSolomonParityShards uint8       // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of the shards)
+	Created                 int64       // Unix timestamp when the data was created
+	Aliases                 []hash.Hash // Aliases for the data
 }
 
 // KvData represents a key-value data structure with hierarchical relationships.
@@ -38,7 +40,8 @@ type kvDataHash struct {
 	ShardHashes     []hash.Hash // Hash of KvDataShards
 	MetaShardHashes []hash.Hash // Hash of metadata KvDataShards
 	Parent          hash.Hash   // Key of the parent chunk
-	Children        []hash.Hash // Keys of the child chunks
+	Created         int64       // Unix timestamp when the data was created
+	Aliases         []hash.Hash // Aliases for the data
 }
 
 type kvDataLinked struct {
@@ -49,6 +52,8 @@ type kvDataLinked struct {
 	MetaChunkHashes []hash.Hash   // Order of metadata chunk hashes
 	Parent          hash.Hash     // Key of the parent chunk
 	Children        []hash.Hash   // Keys of the child chunks
+	Created         int64         // Unix timestamp when the data was created
+	Aliases         []hash.Hash   // Aliases for the data
 }
 
 // kvDataShard represents a chunk of content that will be stored in the key-value store.

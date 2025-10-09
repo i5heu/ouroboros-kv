@@ -30,6 +30,8 @@ func (k *KV) decodeDataPipeline(kvDataLinked kvDataLinked) (Data, error) {
 		Children:                kvDataLinked.Children,
 		ReedSolomonShards:       rsShards,
 		ReedSolomonParityShards: rsParity,
+		Created:                 kvDataLinked.Created,
+		Aliases:                 kvDataLinked.Aliases,
 	}, nil
 }
 

@@ -48,14 +48,14 @@ func setupTestKVForStorage(t *testing.T) (*KV, func()) {
 func createTestStorageData() Data {
 	content := []byte("This is test content for storage and retrieval testing. It should be long enough to test the full pipeline.")
 
-	return Data{
+	return applyTestDefaults(Data{
 		MetaData:                []byte("storage metadata"),
 		Content:                 content,
 		Parent:                  hash.HashString("parent-storage-key"),
 		Children:                []hash.Hash{hash.HashString("child1-storage"), hash.HashString("child2-storage")},
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
-	}
+	})
 }
 
 func TestWriteData(t *testing.T) {
@@ -68,7 +68,7 @@ func TestWriteData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteData failed: %v", err)
 	}
-	expectedKey := hash.HashBytes(testData.Content)
+	expectedKey := expectedKeyForData(testData)
 	if key != expectedKey {
 		t.Errorf("Generated key mismatch: expected %x, got %x", expectedKey, key)
 	}
@@ -121,6 +121,12 @@ func TestReadData(t *testing.T) {
 			t.Errorf("Child %d mismatch: expected %v, got %v", i, originalData.Children[i], child)
 		}
 	}
+	if readData.Created != originalData.Created {
+		t.Errorf("Created mismatch: expected %d, got %d", originalData.Created, readData.Created)
+	}
+	if len(readData.Aliases) != len(originalData.Aliases) {
+		t.Errorf("Aliases count mismatch: expected %d, got %d", len(originalData.Aliases), len(readData.Aliases))
+	}
 }
 
 func TestWriteReadRoundTrip(t *testing.T) {
@@ -148,21 +154,21 @@ func TestWriteReadRoundTrip(t *testing.T) {
 				content[i] = byte(i % 256)
 			}
 
-			originalData := Data{
+			originalData := applyTestDefaults(Data{
 				MetaData:                []byte("meta-" + tc.name),
 				Content:                 content,
 				Parent:                  hash.HashString("parent"),
 				Children:                []hash.Hash{hash.HashString("child1")},
 				ReedSolomonShards:       tc.shards,
 				ReedSolomonParityShards: tc.parity,
-			}
+			})
 
 			// Write
 			key, err := kv.WriteData(originalData)
 			if err != nil {
 				t.Fatalf("WriteData failed for %s: %v", tc.name, err)
 			}
-			expectedKey := hash.HashBytes(originalData.Content)
+			expectedKey := expectedKeyForData(originalData)
 			if key != expectedKey {
 				t.Errorf("Generated key mismatch for %s: expected %x, got %x", tc.name, expectedKey, key)
 			}
@@ -182,6 +188,12 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			}
 			if readData.Key != key {
 				t.Errorf("Round-trip failed for %s: key mismatch", tc.name)
+			}
+			if readData.Created != originalData.Created {
+				t.Errorf("Round-trip failed for %s: Created mismatch (expected %d, got %d)", tc.name, originalData.Created, readData.Created)
+			}
+			if len(readData.Aliases) != len(originalData.Aliases) {
+				t.Errorf("Round-trip failed for %s: Aliases count mismatch (expected %d, got %d)", tc.name, len(originalData.Aliases), len(readData.Aliases))
 			}
 		})
 	}
@@ -204,7 +216,7 @@ func TestDataExists(t *testing.T) {
 	defer cleanup()
 
 	testData := createTestStorageData()
-	expectedKey := hash.HashBytes(testData.Content)
+	expectedKey := expectedKeyForData(testData)
 
 	// Check non-existent data
 	exists, err := kv.DataExists(expectedKey)
@@ -245,15 +257,15 @@ func TestBatchWriteData(t *testing.T) {
 	)
 	for i := 0; i < 5; i++ {
 		content := []byte("Batch test content " + string(rune('0'+i)))
-		data := Data{
+		data := applyTestDefaults(Data{
 			Content:                 content,
 			Parent:                  hash.HashString("batch-parent"),
 			Children:                []hash.Hash{},
 			ReedSolomonShards:       2,
 			ReedSolomonParityShards: 1,
-		}
+		})
 		dataList = append(dataList, data)
-		expectedKeys = append(expectedKeys, hash.HashBytes(content))
+		expectedKeys = append(expectedKeys, expectedKeyForData(data))
 	}
 
 	// Batch write
@@ -290,13 +302,13 @@ func TestBatchReadData(t *testing.T) {
 	var originalDataList []Data
 	var keys []hash.Hash
 	for i := 0; i < 3; i++ {
-		data := Data{
+		data := applyTestDefaults(Data{
 			Content:                 []byte("Batch read test content " + string(rune('0'+i))),
 			Parent:                  hash.HashString("batch-read-parent"),
 			Children:                []hash.Hash{},
 			ReedSolomonShards:       2,
 			ReedSolomonParityShards: 1,
-		}
+		})
 		originalDataList = append(originalDataList, data)
 
 		// Write individual data
@@ -325,6 +337,12 @@ func TestBatchReadData(t *testing.T) {
 		}
 		if !bytes.Equal(readData.Content, originalData.Content) {
 			t.Errorf("Content mismatch for item %d", i)
+		}
+		if readData.Created != originalData.Created {
+			t.Errorf("Created mismatch for item %d: expected %d, got %d", i, originalData.Created, readData.Created)
+		}
+		if len(readData.Aliases) != len(originalData.Aliases) {
+			t.Errorf("Aliases count mismatch for item %d: expected %d, got %d", i, len(originalData.Aliases), len(readData.Aliases))
 		}
 	}
 }
@@ -378,20 +396,20 @@ func TestWriteDataEmptyContent(t *testing.T) {
 	defer cleanup()
 
 	// Test data with empty content
-	testData := Data{
+	testData := applyTestDefaults(Data{
 		Content:                 []byte{},
 		Parent:                  hash.HashString("parent"),
 		Children:                []hash.Hash{},
 		ReedSolomonShards:       2,
 		ReedSolomonParityShards: 1,
-	}
+	})
 
 	// Write empty content
 	key, err := kv.WriteData(testData)
 	if err != nil {
 		t.Fatalf("WriteData with empty content failed: %v", err)
 	}
-	expectedKey := hash.HashBytes(testData.Content)
+	expectedKey := expectedKeyForData(testData)
 	if key != expectedKey {
 		t.Errorf("Generated key mismatch for empty content: expected %x, got %x", expectedKey, key)
 	}

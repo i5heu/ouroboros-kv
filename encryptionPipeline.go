@@ -31,6 +31,8 @@ func (k *KV) encodeDataPipeline(data Data) (kvDataLinked, error) {
 		MetaChunkHashes: metaHashes,
 		Parent:          data.Parent,
 		Children:        data.Children,
+		Created:         data.Created,
+		Aliases:         data.Aliases,
 	}, nil
 }
 
