@@ -14,13 +14,19 @@ type DataInfo struct {
 	Key                     hash.Hash   // The data key
 	KeyBase64               string      // Base64 encoded key for display
 	ChunkHashes             []hash.Hash // Hashes of all chunks
+	MetaChunkHashes         []hash.Hash // Hashes of all metadata chunks
 	ClearTextSize           uint64      // Original uncompressed data size
 	StorageSize             uint64      // Total size on storage (sum of all shards)
+	MetaClearTextSize       uint64      // Metadata clear text size
+	MetaStorageSize         uint64      // Total metadata storage size
 	NumChunks               int         // Number of logical chunks
 	NumShards               int         // Total number of Reed-Solomon shards
+	MetaNumChunks           int         // Number of metadata chunks
+	MetaNumShards           int         // Total number of metadata shards
 	ReedSolomonShards       uint8       // Data shards per chunk
 	ReedSolomonParityShards uint8       // Parity shards per chunk
 	ChunkDetails            []ChunkInfo // Detailed information per chunk
+	MetaData                []byte      // Decoded metadata payload
 }
 
 // ChunkInfo represents information about a single chunk and its shards
@@ -80,7 +86,9 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		info.Key = key
 		info.KeyBase64 = base64.StdEncoding.EncodeToString(key[:])
 		info.ChunkHashes = metadata.ShardHashes
+		info.MetaChunkHashes = metadata.MetaShardHashes
 		info.NumChunks = len(metadata.ShardHashes)
+		info.MetaNumChunks = len(metadata.MetaShardHashes)
 
 		// Load chunks to get detailed information
 		var allChunks []kvDataShard
@@ -92,13 +100,27 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 			allChunks = append(allChunks, chunks...)
 		}
 
+		var allMetaChunks []kvDataShard
+		for _, chunkHash := range metadata.MetaShardHashes {
+			chunks, err := k.loadChunksByHash(txn, chunkHash)
+			if err != nil {
+				return fmt.Errorf("failed to load metadata chunks for hash %x: %w", chunkHash, err)
+			}
+			allMetaChunks = append(allMetaChunks, chunks...)
+		}
+
 		// Calculate sizes and analyze chunks
 		var totalStorageSize uint64
+		var totalMetaStorageSize uint64
 		chunkMap := make(map[hash.Hash][]kvDataShard)
+		metaChunkMap := make(map[hash.Hash][]kvDataShard)
 
 		// Group chunks by hash
 		for _, chunk := range allChunks {
 			chunkMap[chunk.ChunkHash] = append(chunkMap[chunk.ChunkHash], chunk)
+		}
+		for _, chunk := range allMetaChunks {
+			metaChunkMap[chunk.ChunkHash] = append(metaChunkMap[chunk.ChunkHash], chunk)
 		}
 
 		// Process each chunk group
@@ -144,6 +166,33 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		info.StorageSize = totalStorageSize
 		info.NumShards = len(allChunks)
 
+		// Process metadata chunks
+		for _, metaHash := range metadata.MetaShardHashes {
+			metaChunks := metaChunkMap[metaHash]
+			if len(metaChunks) == 0 {
+				continue
+			}
+
+			firstMeta := metaChunks[0]
+			info.MetaClearTextSize += firstMeta.OriginalSize
+
+			for _, chunk := range metaChunks {
+				totalMetaStorageSize += chunk.Size
+			}
+		}
+
+		info.MetaStorageSize = totalMetaStorageSize
+		info.MetaNumShards = len(allMetaChunks)
+
+		if len(allMetaChunks) > 0 && len(metadata.MetaShardHashes) > 0 {
+			metaPayload, _, _, err := k.reconstructPayload(allMetaChunks, metadata.MetaShardHashes)
+			if err != nil {
+				return fmt.Errorf("failed to reconstruct metadata payload: %w", err)
+			}
+			info.MetaData = metaPayload
+			info.MetaClearTextSize = uint64(len(metaPayload))
+		}
+
 		return nil
 	})
 
@@ -161,6 +210,11 @@ func (info DataInfo) FormatDataInfo() string {
 	output += fmt.Sprintf("Storage Size: %s (%d bytes)\n", formatBytes(info.StorageSize), info.StorageSize)
 	output += fmt.Sprintf("Compression Ratio: %.2fx\n", float64(info.StorageSize)/float64(info.ClearTextSize))
 	output += fmt.Sprintf("Chunks: %d, Total Shards: %d\n", info.NumChunks, info.NumShards)
+	if info.MetaNumChunks > 0 {
+		output += fmt.Sprintf("Metadata Size: %s (%d bytes)\n", formatBytes(info.MetaClearTextSize), info.MetaClearTextSize)
+		output += fmt.Sprintf("Metadata Storage Size: %s (%d bytes)\n", formatBytes(info.MetaStorageSize), info.MetaStorageSize)
+		output += fmt.Sprintf("Metadata Chunks: %d, Metadata Shards: %d\n", info.MetaNumChunks, info.MetaNumShards)
+	}
 	output += fmt.Sprintf("Reed-Solomon Config: %d data + %d parity shards per chunk\n\n",
 		info.ReedSolomonShards, info.ReedSolomonParityShards)
 
