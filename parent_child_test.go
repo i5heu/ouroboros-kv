@@ -227,3 +227,38 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 	assert.Len(t, roots, 1)
 	assert.Equal(t, parentKeyOut, roots[0])
 }
+
+func TestListRootKeys(t *testing.T) {
+	kv, cleanup := setupTestKVForParentChild(t)
+	defer cleanup()
+
+	root1Data := Data{
+		Content:                 []byte("Root 1"),
+		ReedSolomonShards:       3,
+		ReedSolomonParityShards: 2,
+	}
+	root1Key, err := kv.WriteData(root1Data)
+	require.NoError(t, err)
+
+	root2Data := Data{
+		Content:                 []byte("Root 2"),
+		ReedSolomonShards:       3,
+		ReedSolomonParityShards: 2,
+	}
+	root2Key, err := kv.WriteData(root2Data)
+	require.NoError(t, err)
+
+	childData := Data{
+		Content:                 []byte("Child of root 1"),
+		Parent:                  root1Key,
+		ReedSolomonShards:       3,
+		ReedSolomonParityShards: 2,
+	}
+	_, err = kv.WriteData(childData)
+	require.NoError(t, err)
+
+	roots, err := kv.ListRootKeys()
+	require.NoError(t, err)
+	assert.Len(t, roots, 2)
+	assert.ElementsMatch(t, []hash.Hash{root1Key, root2Key}, roots)
+}

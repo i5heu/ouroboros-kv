@@ -202,24 +202,7 @@ func (k *KV) GetAncestors(leafKey hash.Hash) ([]hash.Hash, error) {
 
 // GetRoots returns all data entries that have no parent (root nodes)
 func (k *KV) GetRoots() ([]hash.Hash, error) {
-	allKeys, err := k.ListKeys()
-	if err != nil {
-		return nil, err
-	}
-
-	var roots []hash.Hash
-	for _, key := range allKeys {
-		parent, err := k.GetParent(key)
-		if err != nil {
-			return nil, err
-		}
-
-		if isEmptyHash(parent) {
-			roots = append(roots, key)
-		}
-	}
-
-	return roots, nil
+	return k.ListRootKeys()
 }
 
 // loadMetadata loads and deserializes KvDataHash metadata from storage
@@ -467,4 +450,64 @@ func (k *KV) ListKeys() ([]hash.Hash, error) {
 	})
 
 	return keys, err
+}
+
+// ListRootKeys returns all metadata hashes that do not have a parent relationship
+func (k *KV) ListRootKeys() ([]hash.Hash, error) {
+	var roots []hash.Hash
+	atomic.AddUint64(&k.readCounter, 1)
+
+	err := k.badgerDB.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+
+		prefix := []byte(METADATA_PREFIX)
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+
+			var valueCopy []byte
+			if err := item.Value(func(val []byte) error {
+				valueCopy = append([]byte(nil), val...)
+				return nil
+			}); err != nil {
+				return fmt.Errorf("failed to read metadata value: %w", err)
+			}
+
+			protoMetadata := &pb.KvDataHashProto{}
+			if err := proto.Unmarshal(valueCopy, protoMetadata); err != nil {
+				return fmt.Errorf("failed to unmarshal metadata: %w", err)
+			}
+
+			var parent hash.Hash
+			if len(protoMetadata.Parent) == len(parent) {
+				copy(parent[:], protoMetadata.Parent)
+			}
+
+			if !isEmptyHash(parent) {
+				continue
+			}
+
+			var keyHash hash.Hash
+			if len(protoMetadata.Key) == len(keyHash) {
+				copy(keyHash[:], protoMetadata.Key)
+				roots = append(roots, keyHash)
+				continue
+			}
+
+			// Fallback: attempt to parse the hash from the metadata key prefix
+			keyBytes := item.Key()
+			if len(keyBytes) > len(METADATA_PREFIX) {
+				hashHex := string(keyBytes[len(METADATA_PREFIX):])
+				hashValue, err := hash.HashHexadecimal(hashHex)
+				if err == nil {
+					roots = append(roots, hashValue)
+				}
+			}
+		}
+		return nil
+	})
+
+	return roots, err
 }
