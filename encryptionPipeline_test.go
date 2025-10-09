@@ -49,6 +49,7 @@ func setupTestKV(t *testing.T) (*KV, func()) {
 func createTestData() Data {
 	return Data{
 		Key:                     hash.HashString("test-key"),
+		MetaData:                []byte("Test metadata"),
 		Content:                 []byte("This is test content for the encryption pipeline. It should be long enough to test chunking functionality."),
 		Parent:                  hash.HashString("parent-key"),
 		Children:                []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
@@ -83,7 +84,11 @@ func TestEncodeDataPipeline(t *testing.T) {
 
 	// Verify chunks were created
 	if len(result.Shards) == 0 {
-		t.Error("Expected chunks to be created, but got none")
+		t.Error("Expected content shards to be created, but got none")
+	}
+
+	if len(result.MetaShards) == 0 {
+		t.Error("Expected metadata shards to be created, but got none")
 	}
 
 	// Verify Reed-Solomon settings
@@ -113,9 +118,25 @@ func TestEncodeDataPipelineEmptyContent(t *testing.T) {
 		t.Fatalf("encodeDataPipeline with empty content failed: %v", err)
 	}
 
-	// Empty content should result in no chunks since chunker returns 0 chunks
 	if len(result.Shards) != 0 {
-		t.Errorf("Expected 0 chunks for empty content, got %d", len(result.Shards))
+		t.Errorf("Expected no content shards, got %d", len(result.Shards))
+	}
+
+	if len(result.MetaShards) == 0 {
+		t.Error("Expected metadata shards to be created")
+	}
+
+	decoded, err := kv.decodeDataPipeline(result)
+	if err != nil {
+		t.Fatalf("decodeDataPipeline failed: %v", err)
+	}
+
+	if len(decoded.Content) != 0 {
+		t.Errorf("Expected empty content, got %d bytes", len(decoded.Content))
+	}
+
+	if !bytes.Equal(decoded.MetaData, testData.MetaData) {
+		t.Error("Metadata round-trip mismatch for empty content case")
 	}
 }
 
@@ -125,7 +146,7 @@ func TestChunker(t *testing.T) {
 
 	testData := createTestData()
 
-	chunks, err := kv.chunker(testData)
+	chunks, err := kv.chunker(testData.Content)
 	if err != nil {
 		t.Fatalf("chunker failed: %v", err)
 	}
@@ -151,13 +172,11 @@ func TestChunkerEmptyContent(t *testing.T) {
 
 	testData := createTestData()
 	testData.Content = []byte{}
-
-	chunks, err := kv.chunker(testData)
+	chunks, err := kv.chunker(testData.Content)
 	if err != nil {
 		t.Fatalf("chunker with empty content failed: %v", err)
 	}
 
-	// Empty content should result in no chunks
 	if len(chunks) != 0 {
 		t.Errorf("Expected 0 chunks for empty content, got %d", len(chunks))
 	}
@@ -293,6 +312,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 
 			testData := Data{
 				Key:                     hash.HashString("test-key-" + tc.name),
+				MetaData:                []byte("metadata-" + tc.name),
 				Content:                 content,
 				Parent:                  hash.HashString("parent"),
 				Children:                []hash.Hash{},
@@ -310,6 +330,10 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 				t.Errorf("No chunks created for %s", tc.name)
 			}
 
+			if len(result.MetaShards) == 0 {
+				t.Errorf("No metadata shards created for %s", tc.name)
+			}
+
 			// Verify all chunks have consistent Reed-Solomon settings
 			expectedTotal := testData.ReedSolomonShards + testData.ReedSolomonParityShards
 			chunksByGroup := make(map[hash.Hash][]kvDataShard)
@@ -322,6 +346,19 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 				if len(chunks) != int(expectedTotal) {
 					t.Errorf("Chunk group %v: expected %d shards, got %d", chunkHash, expectedTotal, len(chunks))
 				}
+			}
+
+			decoded, err := kv.decodeDataPipeline(result)
+			if err != nil {
+				t.Fatalf("decodeDataPipeline failed for %s: %v", tc.name, err)
+			}
+
+			if !bytes.Equal(decoded.Content, testData.Content) {
+				t.Errorf("Decoded content mismatch for %s", tc.name)
+			}
+
+			if !bytes.Equal(decoded.MetaData, testData.MetaData) {
+				t.Errorf("Decoded metadata mismatch for %s", tc.name)
 			}
 		})
 	}

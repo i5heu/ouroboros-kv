@@ -24,6 +24,7 @@ type KV struct {
 // Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
 type Data struct {
 	Key                     hash.Hash   // Key of the content, must be empty when writing new data since it will be generated from the content
+	MetaData                []byte      // Additional metadata associated with the data (stored securely but not part of the key)
 	Content                 []byte      // The actual content of the data
 	Parent                  hash.Hash   // Key of the parent value
 	Children                []hash.Hash // Keys of the child values
@@ -33,17 +34,21 @@ type Data struct {
 
 // KvData represents a key-value data structure with hierarchical relationships.
 type kvDataHash struct {
-	Key         hash.Hash
-	ShardHashes []hash.Hash // Hash of KvDataShards
-	Parent      hash.Hash   // Key of the parent chunk
-	Children    []hash.Hash // Keys of the child chunks
+	Key             hash.Hash
+	ShardHashes     []hash.Hash // Hash of KvDataShards
+	MetaShardHashes []hash.Hash // Hash of metadata KvDataShards
+	Parent          hash.Hash   // Key of the parent chunk
+	Children        []hash.Hash // Keys of the child chunks
 }
 
 type kvDataLinked struct {
-	Key      hash.Hash
-	Shards   []kvDataShard // Hash of KvDataShards
-	Parent   hash.Hash     // Key of the parent chunk
-	Children []hash.Hash   // Keys of the child chunks
+	Key             hash.Hash
+	Shards          []kvDataShard // Content shards
+	ChunkHashes     []hash.Hash   // Order of content chunk hashes
+	MetaShards      []kvDataShard // Metadata shards
+	MetaChunkHashes []hash.Hash   // Order of metadata chunk hashes
+	Parent          hash.Hash     // Key of the parent chunk
+	Children        []hash.Hash   // Keys of the child chunks
 }
 
 // kvDataShard represents a chunk of content that will be stored in the key-value store.

@@ -12,10 +12,11 @@ import (
 
 const (
 	// Key prefixes for different data types in BadgerDB
-	METADATA_PREFIX = "meta:"   // For KvDataHash metadata
-	CHUNK_PREFIX    = "chunk:"  // For KvDataShard data
-	PARENT_PREFIX   = "parent:" // For parent relationships: parent_key -> child_key
-	CHILD_PREFIX    = "child:"  // For child relationships: child_key -> parent_key
+	METADATA_PREFIX       = "meta:"        // For KvDataHash metadata
+	METADATA_CHUNK_PREFIX = "meta_chunks:" // For metadata shard hashes
+	CHUNK_PREFIX          = "chunk:"       // For KvDataShard data
+	PARENT_PREFIX         = "parent:"      // For parent relationships: parent_key -> child_key
+	CHILD_PREFIX          = "child:"       // For child relationships: child_key -> parent_key
 )
 
 // WriteData encodes and stores the given Data in the key-value store
@@ -35,23 +36,32 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("failed to encode data: %w", err)
 	}
 
-	// Create metadata structure with chunk hashes
-	var chunkHashes []hash.Hash
-	chunkMap := make(map[hash.Hash][]kvDataShard)
-
-	// Group chunks by their chunk hash to get unique chunk identifiers
-	for _, chunk := range encoded.Shards {
-		if _, exists := chunkMap[chunk.ChunkHash]; !exists {
-			chunkHashes = append(chunkHashes, chunk.ChunkHash)
+	// Group content shards by chunk hash
+	contentHashes := make([]hash.Hash, 0, len(encoded.Shards))
+	contentShardMap := make(map[hash.Hash][]kvDataShard)
+	for _, shard := range encoded.Shards {
+		if _, exists := contentShardMap[shard.ChunkHash]; !exists {
+			contentHashes = append(contentHashes, shard.ChunkHash)
 		}
-		chunkMap[chunk.ChunkHash] = append(chunkMap[chunk.ChunkHash], chunk)
+		contentShardMap[shard.ChunkHash] = append(contentShardMap[shard.ChunkHash], shard)
+	}
+
+	// Group metadata shards by chunk hash
+	metaHashes := make([]hash.Hash, 0, len(encoded.MetaShards))
+	metaShardMap := make(map[hash.Hash][]kvDataShard)
+	for _, shard := range encoded.MetaShards {
+		if _, exists := metaShardMap[shard.ChunkHash]; !exists {
+			metaHashes = append(metaHashes, shard.ChunkHash)
+		}
+		metaShardMap[shard.ChunkHash] = append(metaShardMap[shard.ChunkHash], shard)
 	}
 
 	metadata := kvDataHash{
-		Key:         encoded.Key,
-		ShardHashes: chunkHashes,
-		Parent:      encoded.Parent,
-		Children:    encoded.Children,
+		Key:             encoded.Key,
+		ShardHashes:     contentHashes,
+		MetaShardHashes: metaHashes,
+		Parent:          encoded.Parent,
+		Children:        encoded.Children,
 	}
 
 	// Use WriteBatch for better handling of large transactions
@@ -64,18 +74,30 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("failed to store metadata: %w", err)
 	}
 
+	if err := k.storeMetadataChunkHashesWithBatch(wb, metadata.Key, metadata.MetaShardHashes); err != nil {
+		return hash.Hash{}, fmt.Errorf("failed to store metadata shard hashes: %w", err)
+	}
+
 	// Store parent-child relationships
 	err = k.storeParentChildRelationships(wb, metadata.Key, metadata.Parent, metadata.Children)
 	if err != nil {
 		return hash.Hash{}, fmt.Errorf("failed to store parent-child relationships: %w", err)
 	}
 
-	// Store all chunks
-	for _, chunks := range chunkMap {
+	// Store all content chunks
+	for _, chunks := range contentShardMap {
 		for _, chunk := range chunks {
-			err := k.storeChunkWithBatch(wb, chunk)
-			if err != nil {
+			if err := k.storeChunkWithBatch(wb, chunk); err != nil {
 				return hash.Hash{}, fmt.Errorf("failed to store chunk: %w", err)
+			}
+		}
+	}
+
+	// Store all metadata chunks
+	for _, chunks := range metaShardMap {
+		for _, chunk := range chunks {
+			if err := k.storeChunkWithBatch(wb, chunk); err != nil {
+				return hash.Hash{}, fmt.Errorf("failed to store metadata chunk: %w", err)
 			}
 		}
 	}
@@ -178,6 +200,26 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) 
 	key := fmt.Sprintf("%s%x", METADATA_PREFIX, metadata.Key)
 
 	return wb.Set([]byte(key), data)
+}
+
+func (k *KV) storeMetadataChunkHashesWithBatch(wb *badger.WriteBatch, key hash.Hash, hashes []hash.Hash) error {
+	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	payload := serializeHashesToBytes(hashes)
+	return wb.Set([]byte(metaKey), payload)
+}
+
+func (k *KV) storeMetadataChunkHashesTxn(txn *badger.Txn, key hash.Hash, hashes []hash.Hash) error {
+	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+	if len(hashes) == 0 {
+		return nil
+	}
+
+	payload := serializeHashesToBytes(hashes)
+	return txn.Set([]byte(metaKey), payload)
 }
 
 // storeChunkWithBatch serializes and stores a KvDataShard using WriteBatch
@@ -286,22 +328,32 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 		keys = append(keys, data.Key)
 
 		// Create metadata
-		var chunkHashes []hash.Hash
-		chunkMap := make(map[hash.Hash]bool)
-
+		contentHashes := make([]hash.Hash, 0, len(encoded.Shards))
+		contentSeen := make(map[hash.Hash]bool)
 		for _, chunk := range encoded.Shards {
-			if !chunkMap[chunk.ChunkHash] {
-				chunkHashes = append(chunkHashes, chunk.ChunkHash)
-				chunkMap[chunk.ChunkHash] = true
+			if !contentSeen[chunk.ChunkHash] {
+				contentHashes = append(contentHashes, chunk.ChunkHash)
+				contentSeen[chunk.ChunkHash] = true
+			}
+			allChunks = append(allChunks, chunk)
+		}
+
+		metaHashes := make([]hash.Hash, 0, len(encoded.MetaShards))
+		metaSeen := make(map[hash.Hash]bool)
+		for _, chunk := range encoded.MetaShards {
+			if !metaSeen[chunk.ChunkHash] {
+				metaHashes = append(metaHashes, chunk.ChunkHash)
+				metaSeen[chunk.ChunkHash] = true
 			}
 			allChunks = append(allChunks, chunk)
 		}
 
 		metadata := kvDataHash{
-			Key:         encoded.Key,
-			ShardHashes: chunkHashes,
-			Parent:      encoded.Parent,
-			Children:    encoded.Children,
+			Key:             encoded.Key,
+			ShardHashes:     contentHashes,
+			MetaShardHashes: metaHashes,
+			Parent:          encoded.Parent,
+			Children:        encoded.Children,
 		}
 		allMetadata = append(allMetadata, metadata)
 	}
@@ -313,6 +365,10 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			err := k.storeMetadata(txn, metadata)
 			if err != nil {
 				return fmt.Errorf("failed to store metadata for key %x: %w", metadata.Key, err)
+			}
+
+			if err := k.storeMetadataChunkHashesTxn(txn, metadata.Key, metadata.MetaShardHashes); err != nil {
+				return fmt.Errorf("failed to store metadata shard hashes for key %x: %w", metadata.Key, err)
 			}
 
 			// Store parent-child relationships

@@ -12,85 +12,24 @@ import (
 )
 
 func (k *KV) decodeDataPipeline(kvDataLinked kvDataLinked) (Data, error) {
-	// Group chunks by their chunk hash to reconstruct original encrypted chunks
-	chunkGroups := make(map[hash.Hash][]kvDataShard)
-	for _, chunk := range kvDataLinked.Shards {
-		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
+	content, rsShards, rsParity, err := k.reconstructPayload(kvDataLinked.Shards, kvDataLinked.ChunkHashes)
+	if err != nil {
+		return Data{}, err
 	}
 
-	// Get ordered chunk hashes from metadata to preserve chunk order
-	// We need to determine the correct order. Since we don't have direct access to the metadata order here,
-	// we'll extract it from the chunks themselves by looking at the unique chunk hashes in order they appear
-	var orderedChunkHashes []hash.Hash
-	seenHashes := make(map[hash.Hash]bool)
-	for _, chunk := range kvDataLinked.Shards {
-		if !seenHashes[chunk.ChunkHash] {
-			orderedChunkHashes = append(orderedChunkHashes, chunk.ChunkHash)
-			seenHashes[chunk.ChunkHash] = true
-		}
-	}
-
-	// Reconstruct Reed-Solomon encoded chunks back to encrypted chunks in the correct order
-	var encryptedChunks []*encrypt.EncryptResult
-
-	for _, chunkHash := range orderedChunkHashes {
-		chunks := chunkGroups[chunkHash]
-		encryptedChunk, err := k.reedSolomonReconstructor(chunks)
-		if err != nil {
-			return Data{}, fmt.Errorf("failed to reconstruct Reed-Solomon chunk: %w", err)
-		}
-		encryptedChunks = append(encryptedChunks, encryptedChunk)
-	}
-
-	// Decrypt the chunks
-	var compressedChunks [][]byte
-	for _, encryptedChunk := range encryptedChunks {
-		decryptedChunk, err := k.crypt.Decrypt(encryptedChunk)
-		if err != nil {
-			return Data{}, fmt.Errorf("failed to decrypt chunk: %w", err)
-		}
-		compressedChunks = append(compressedChunks, decryptedChunk)
-	}
-
-	// Decompress the chunks
-	var chunks [][]byte
-	for _, compressedChunk := range compressedChunks {
-		decompressedChunk, err := decompressWithZstd(compressedChunk)
-		if err != nil {
-			return Data{}, fmt.Errorf("failed to decompress chunk: %w", err)
-		}
-		chunks = append(chunks, decompressedChunk)
-	}
-
-	// Verify chunk hashes in order
-	for i, chunk := range chunks {
-		expectedHash := orderedChunkHashes[i]
-		actualHash := hash.HashBytes(chunk)
-		if actualHash != expectedHash {
-			return Data{}, fmt.Errorf("chunk %d hash mismatch: expected %x, got %x", i, expectedHash, actualHash)
-		}
-	}
-
-	// Reassemble chunks into original content
-	var content bytes.Buffer
-	for _, chunk := range chunks {
-		content.Write(chunk)
-	}
-
-	// Get Reed-Solomon configuration from the first chunk (all chunks have the same config)
-	var reedSolomonShards, reedSolomonParityShards uint8
-	if len(kvDataLinked.Shards) > 0 {
-		reedSolomonShards = kvDataLinked.Shards[0].ReedSolomonShards
-		reedSolomonParityShards = kvDataLinked.Shards[0].ReedSolomonParityShards
+	metadata, _, _, err := k.reconstructPayload(kvDataLinked.MetaShards, kvDataLinked.MetaChunkHashes)
+	if err != nil {
+		return Data{}, err
 	}
 
 	return Data{
 		Key:                     kvDataLinked.Key,
-		Content:                 content.Bytes(),
+		MetaData:                metadata,
+		Content:                 content,
 		Parent:                  kvDataLinked.Parent,
 		Children:                kvDataLinked.Children,
-		ReedSolomonShards:       reedSolomonShards,
-		ReedSolomonParityShards: reedSolomonParityShards,
+		ReedSolomonShards:       rsShards,
+		ReedSolomonParityShards: rsParity,
 	}, nil
 }
 
@@ -173,4 +112,58 @@ func decompressWithZstd(data []byte) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+func (k *KV) reconstructPayload(shards []kvDataShard, hashOrder []hash.Hash) ([]byte, uint8, uint8, error) {
+	if len(shards) == 0 {
+		return nil, 0, 0, nil
+	}
+
+	if len(hashOrder) == 0 {
+		return nil, 0, 0, fmt.Errorf("hash order missing for payload reconstruction")
+	}
+
+	chunkGroups := make(map[hash.Hash][]kvDataShard)
+	for _, shard := range shards {
+		chunkGroups[shard.ChunkHash] = append(chunkGroups[shard.ChunkHash], shard)
+	}
+
+	var payload bytes.Buffer
+	var rsShards, rsParity uint8
+
+	for idx, chunkHash := range hashOrder {
+		chunks, ok := chunkGroups[chunkHash]
+		if !ok {
+			return nil, 0, 0, fmt.Errorf("missing shard group for hash %x", chunkHash)
+		}
+
+		encryptedChunk, err := k.reedSolomonReconstructor(chunks)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("failed to reconstruct Reed-Solomon chunk: %w", err)
+		}
+
+		decryptedChunk, err := k.crypt.Decrypt(encryptedChunk)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("failed to decrypt chunk: %w", err)
+		}
+
+		decompressedChunk, err := decompressWithZstd(decryptedChunk)
+		if err != nil {
+			return nil, 0, 0, fmt.Errorf("failed to decompress chunk: %w", err)
+		}
+
+		actualHash := hash.HashBytes(decompressedChunk)
+		if actualHash != chunkHash {
+			return nil, 0, 0, fmt.Errorf("chunk %d hash mismatch: expected %x, got %x", idx, chunkHash, actualHash)
+		}
+
+		payload.Write(decompressedChunk)
+
+		if rsShards == 0 && len(chunks) > 0 {
+			rsShards = chunks[0].ReedSolomonShards
+			rsParity = chunks[0].ReedSolomonParityShards
+		}
+	}
+
+	return payload.Bytes(), rsShards, rsParity, nil
 }

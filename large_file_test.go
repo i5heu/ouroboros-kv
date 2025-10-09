@@ -61,8 +61,11 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			expectedKey := hash.HashBytes(originalData)
 
 			// Create Data structure
+			metadata := []byte(fmt.Sprintf("metadata-%s", tc.name))
+
 			data := Data{
 				Content:                 originalData,
+				MetaData:                metadata,
 				Parent:                  hash.Hash{},   // Empty parent
 				Children:                []hash.Hash{}, // No children
 				ReedSolomonShards:       8,
@@ -84,6 +87,7 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			t.Logf("Verifying %s of data integrity...", tc.name)
 			assert.Equal(t, key, retrievedData.Key, "Keys should match")
 			assert.Equal(t, data.Parent, retrievedData.Parent, "Parents should match")
+			assert.Equal(t, data.MetaData, retrievedData.MetaData, "Metadata should match")
 			// Handle empty slice vs nil slice comparison
 			if len(data.Children) == 0 && len(retrievedData.Children) == 0 {
 				// Both are empty, this is fine
@@ -168,6 +172,7 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			// Create Data structure
 			data := Data{
 				Key:                     contentHash,
+				MetaData:                []byte(fmt.Sprintf("metadata-%s", tc.name)),
 				Content:                 originalData,
 				Parent:                  hash.Hash{},
 				Children:                []hash.Hash{},
@@ -197,6 +202,7 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			assert.Equal(t, data.Key, decoded.Key, "Key should match after decode")
 			assert.Equal(t, data.Parent, decoded.Parent, "Parent should match after decode")
 			assert.Equal(t, data.Children, decoded.Children, "Children should match after decode")
+			assert.Equal(t, data.MetaData, decoded.MetaData, "Metadata should match after decode")
 			assert.Equal(t, data.ReedSolomonShards, decoded.ReedSolomonShards, "ReedSolomonShards should match after decode")
 			assert.Equal(t, data.ReedSolomonParityShards, decoded.ReedSolomonParityShards, "ReedSolomonParityShards should match after decode")
 

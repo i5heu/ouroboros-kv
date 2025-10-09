@@ -49,6 +49,7 @@ func createTestStorageData() Data {
 	content := []byte("This is test content for storage and retrieval testing. It should be long enough to test the full pipeline.")
 
 	return Data{
+		MetaData:                []byte("storage metadata"),
 		Content:                 content,
 		Parent:                  hash.HashString("parent-storage-key"),
 		Children:                []hash.Hash{hash.HashString("child1-storage"), hash.HashString("child2-storage")},
@@ -106,6 +107,9 @@ func TestReadData(t *testing.T) {
 	if !bytes.Equal(readData.Content, originalData.Content) {
 		t.Errorf("Content mismatch: expected %s, got %s", originalData.Content, readData.Content)
 	}
+	if !bytes.Equal(readData.MetaData, originalData.MetaData) {
+		t.Errorf("Metadata mismatch: expected %s, got %s", originalData.MetaData, readData.MetaData)
+	}
 	if readData.Parent != originalData.Parent {
 		t.Errorf("Parent mismatch: expected %v, got %v", originalData.Parent, readData.Parent)
 	}
@@ -145,6 +149,7 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			}
 
 			originalData := Data{
+				MetaData:                []byte("meta-" + tc.name),
 				Content:                 content,
 				Parent:                  hash.HashString("parent"),
 				Children:                []hash.Hash{hash.HashString("child1")},
@@ -171,6 +176,9 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			// Verify round-trip integrity
 			if !bytes.Equal(readData.Content, originalData.Content) {
 				t.Errorf("Round-trip failed for %s: content mismatch", tc.name)
+			}
+			if !bytes.Equal(readData.MetaData, originalData.MetaData) {
+				t.Errorf("Round-trip failed for %s: metadata mismatch", tc.name)
 			}
 			if readData.Key != key {
 				t.Errorf("Round-trip failed for %s: key mismatch", tc.name)

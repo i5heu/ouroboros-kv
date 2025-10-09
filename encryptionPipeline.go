@@ -13,57 +13,30 @@ import (
 )
 
 func (k *KV) encodeDataPipeline(data Data) (kvDataLinked, error) {
-	// chunk the data content
-	chunks, err := k.chunker(data)
+	contentShards, contentHashes, err := k.encodePayload(data.Content, data)
 	if err != nil {
 		return kvDataLinked{}, err
 	}
 
-	// hash the chunks
-	var chunkHashes []hash.Hash
-	for _, chunk := range chunks {
-		chunkHash := hash.HashBytes(chunk) // Hash the chunk content
-		chunkHashes = append(chunkHashes, chunkHash)
-	}
-
-	// compress the chunk
-	var compressedChunks [][]byte
-	for _, chunk := range chunks {
-		compressedChunk, err := compressWithZstd(chunk)
-		if err != nil {
-			return kvDataLinked{}, err
-		}
-		compressedChunks = append(compressedChunks, compressedChunk)
-	}
-
-	// encrypt the chunk
-	var encryptedChunks []*encrypt.EncryptResult
-	for _, chunk := range compressedChunks {
-		encryptedChunk, err := k.crypt.Encrypt(chunk)
-		if err != nil {
-			return kvDataLinked{}, err
-		}
-		encryptedChunks = append(encryptedChunks, encryptedChunk)
-	}
-
-	// split the chunk into reeds-solomon shards
-
-	KvDataShards, err := k.reedSolomonSplitter(data, encryptedChunks, chunkHashes)
+	metaShards, metaHashes, err := k.encodePayload(data.MetaData, data)
 	if err != nil {
 		return kvDataLinked{}, err
 	}
 
 	return kvDataLinked{
-		Key:      data.Key,
-		Shards:   KvDataShards,
-		Parent:   data.Parent,
-		Children: data.Children,
+		Key:             data.Key,
+		Shards:          contentShards,
+		ChunkHashes:     contentHashes,
+		MetaShards:      metaShards,
+		MetaChunkHashes: metaHashes,
+		Parent:          data.Parent,
+		Children:        data.Children,
 	}, nil
 }
 
-func (k *KV) chunker(data Data) ([][]byte, error) {
+func (k *KV) chunker(payload []byte) ([][]byte, error) {
 
-	reader := bytes.NewReader(data.Content)
+	reader := bytes.NewReader(payload)
 	bz := chunker.NewBuzhash(reader)
 
 	var chunks [][]byte
@@ -120,7 +93,7 @@ func (k *KV) reedSolomonSplitter(data Data, encryptedChunks []*encrypt.EncryptRe
 		for j, shard := range shards {
 			KvDataShard := kvDataShard{
 				ChunkHash:               chunkHashes[i],
-				EncodedHash:             hash.HashBytes(encryptedChunk.Ciphertext), // TODO must also include metadata
+				EncodedHash:             hash.HashBytes(encryptedChunk.Ciphertext),
 				ReedSolomonShards:       data.ReedSolomonShards,
 				ReedSolomonParityShards: data.ReedSolomonParityShards,
 				ReedSolomonIndex:        uint8(j),
@@ -135,4 +108,45 @@ func (k *KV) reedSolomonSplitter(data Data, encryptedChunks []*encrypt.EncryptRe
 	}
 
 	return KvDataShards, nil
+}
+
+func (k *KV) encodePayload(payload []byte, data Data) ([]kvDataShard, []hash.Hash, error) {
+	if len(payload) == 0 {
+		return nil, nil, nil
+	}
+
+	chunks, err := k.chunker(payload)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var chunkHashes []hash.Hash
+	for _, chunk := range chunks {
+		chunkHashes = append(chunkHashes, hash.HashBytes(chunk))
+	}
+
+	var compressedChunks [][]byte
+	for _, chunk := range chunks {
+		compressedChunk, err := compressWithZstd(chunk)
+		if err != nil {
+			return nil, nil, err
+		}
+		compressedChunks = append(compressedChunks, compressedChunk)
+	}
+
+	var encryptedChunks []*encrypt.EncryptResult
+	for _, chunk := range compressedChunks {
+		encryptedChunk, err := k.crypt.Encrypt(chunk)
+		if err != nil {
+			return nil, nil, err
+		}
+		encryptedChunks = append(encryptedChunks, encryptedChunk)
+	}
+
+	shards, err := k.reedSolomonSplitter(data, encryptedChunks, chunkHashes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return shards, chunkHashes, nil
 }

@@ -50,24 +50,28 @@ func TestParentChildRelationships(t *testing.T) {
 
 	// Create test data with relationships
 	parentData := Data{
+		MetaData:                []byte("parent metadata"),
 		Content:                 []byte("I am the parent"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	child1Data := Data{
+		MetaData:                []byte("child1 metadata"),
 		Content:                 []byte("I am child 1"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	child2Data := Data{
+		MetaData:                []byte("child2 metadata"),
 		Content:                 []byte("I am child 2"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
 
 	grandchildData := Data{
+		MetaData:                []byte("grandchild metadata"),
 		Content:                 []byte("I am a grandchild"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
@@ -179,6 +183,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 
 	// Create test data
 	parentData := Data{
+		MetaData:                []byte("batch parent metadata"),
 		Content:                 []byte("Batch parent"),
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
@@ -187,6 +192,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 	parentKey := hash.HashBytes(parentData.Content)
 
 	child1Data := Data{
+		MetaData:                []byte("batch child1 metadata"),
 		Content:                 []byte("Batch child 1"),
 		Parent:                  parentKey,
 		ReedSolomonShards:       3,
@@ -194,6 +200,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 	}
 
 	child2Data := Data{
+		MetaData:                []byte("batch child2 metadata"),
 		Content:                 []byte("Batch child 2"),
 		Parent:                  parentKey,
 		ReedSolomonShards:       3,

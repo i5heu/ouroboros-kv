@@ -43,6 +43,12 @@ func (k *KV) DeleteData(key hash.Hash) error {
 			return fmt.Errorf("failed to delete metadata for key %x: %w", key, err)
 		}
 
+		metaChunksKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+		err = txn.Delete([]byte(metaChunksKey))
+		if err != nil && err != badger.ErrKeyNotFound {
+			return fmt.Errorf("failed to delete metadata shard hashes for key %x: %w", key, err)
+		}
+
 		return nil
 	})
 
