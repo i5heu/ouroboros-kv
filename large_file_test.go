@@ -18,6 +18,10 @@ import (
 
 // TestLargeFileRoundTrip tests the complete pipeline with very large files
 func TestLargeFileRoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping large file round trip in short mode")
+	}
+
 	sizes := []struct {
 		name string
 		size int64
@@ -130,6 +134,10 @@ func TestLargeFileRoundTrip(t *testing.T) {
 
 // TestEncodingDecodingPipelineWithLargeFiles tests the encoding and decoding pipelines specifically
 func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping large file pipeline test in short mode")
+	}
+
 	sizes := []struct {
 		name string
 		size int64
@@ -237,6 +245,10 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 
 // TestVirtualFileStorageWithCLI tests the CLI functionality with virtual large files
 func TestVirtualFileStorageWithCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping CLI virtual file test in short mode")
+	}
+
 	sizes := []struct {
 		name string
 		size int64
