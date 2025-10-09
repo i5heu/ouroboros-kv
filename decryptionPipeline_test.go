@@ -3,6 +3,7 @@ package ouroboroskv
 import (
 	"bytes"
 	"os"
+	"reflect"
 	"testing"
 
 	"log/slog"
@@ -53,7 +54,8 @@ func TestDecodeDataPipeline(t *testing.T) {
 		Key:                     hash.HashString("test-key-decode"),
 		Content:                 []byte("This is test content for the decryption pipeline. It should be long enough to test the full pipeline."),
 		Parent:                  hash.HashString("parent-key"),
-		Children:                []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
+		CreationUnixTime:        1700000100,
+		Alias:                   []hash.Hash{hash.HashString("alias1"), hash.HashString("alias2")},
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
@@ -80,13 +82,13 @@ func TestDecodeDataPipeline(t *testing.T) {
 	if decoded.Parent != originalData.Parent {
 		t.Errorf("Parent mismatch: expected %v, got %v", originalData.Parent, decoded.Parent)
 	}
-	if len(decoded.Children) != len(originalData.Children) {
-		t.Errorf("Children count mismatch: expected %d, got %d", len(originalData.Children), len(decoded.Children))
+	if decoded.CreationUnixTime != originalData.CreationUnixTime {
+		t.Errorf("Creation time mismatch: expected %d, got %d", originalData.CreationUnixTime, decoded.CreationUnixTime)
 	}
-	for i, child := range decoded.Children {
-		if child != originalData.Children[i] {
-			t.Errorf("Child %d mismatch: expected %v, got %v", i, originalData.Children[i], child)
-		}
+	expectedAlias := canonicalizeAliases(originalData.Alias)
+	actualAlias := canonicalizeAliases(decoded.Alias)
+	if !reflect.DeepEqual(actualAlias, expectedAlias) {
+		t.Errorf("Alias mismatch: expected %v, got %v", expectedAlias, decoded.Alias)
 	}
 }
 
@@ -99,7 +101,7 @@ func TestDecodeDataPipelineEmptyContent(t *testing.T) {
 		Key:                     hash.HashString("test-key-empty"),
 		Content:                 []byte{},
 		Parent:                  hash.HashString("parent-key"),
-		Children:                []hash.Hash{},
+		CreationUnixTime:        1700000200,
 		ReedSolomonShards:       2,
 		ReedSolomonParityShards: 1,
 	}
@@ -330,7 +332,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 				Key:                     hash.HashString("roundtrip-" + tc.name),
 				Content:                 content,
 				Parent:                  hash.HashString("parent"),
-				Children:                []hash.Hash{hash.HashString("child1")},
+				CreationUnixTime:        1700000300 + int64(tc.contentSize),
 				ReedSolomonShards:       tc.shards,
 				ReedSolomonParityShards: tc.parity,
 			}

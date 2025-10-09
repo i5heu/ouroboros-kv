@@ -23,32 +23,38 @@ type KV struct {
 
 // Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
 type Data struct {
-	Key                     hash.Hash   // Key of the content, must be empty when writing new data since it will be generated from the content
-	MetaData                []byte      // Additional metadata associated with the data (stored securely but not part of the key)
-	Content                 []byte      // The actual content of the data
+	Key                     hash.Hash   // Derived identifier computed from metadata, content, parent, creation time, aliases, and Reed-Solomon configuration. Must be zero when writing; it will be generated automatically.
+	MetaData                []byte      // Additional metadata associated with the data (stored securely and included in key derivation)
+	Content                 []byte      // The actual content of the data (included in key derivation)
 	Parent                  hash.Hash   // Key of the parent value
-	Children                []hash.Hash // Keys of the child values
+	Children                []hash.Hash // Derived list of child values. Not stored directly; populated dynamically from parent relationships.
+	CreationUnixTime        int64       // Unix timestamp when the data entry was created (included in key derivation)
+	Alias                   []hash.Hash // Additional aliases pointing to this data (included in key derivation)
 	ReedSolomonShards       uint8       // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 	ReedSolomonParityShards uint8       // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
 }
 
 // KvData represents a key-value data structure with hierarchical relationships.
 type kvDataHash struct {
-	Key             hash.Hash
-	ShardHashes     []hash.Hash // Hash of KvDataShards
-	MetaShardHashes []hash.Hash // Hash of metadata KvDataShards
-	Parent          hash.Hash   // Key of the parent chunk
-	Children        []hash.Hash // Keys of the child chunks
+	Key              hash.Hash
+	ShardHashes      []hash.Hash // Hash of KvDataShards
+	MetaShardHashes  []hash.Hash // Hash of metadata KvDataShards
+	Parent           hash.Hash   // Key of the parent chunk
+	Children         []hash.Hash // Derived child list gathered from parent relationships
+	CreationUnixTime int64       // Unix timestamp when the data entry was created
+	Alias            []hash.Hash // Additional aliases pointing to this data
 }
 
 type kvDataLinked struct {
-	Key             hash.Hash
-	Shards          []kvDataShard // Content shards
-	ChunkHashes     []hash.Hash   // Order of content chunk hashes
-	MetaShards      []kvDataShard // Metadata shards
-	MetaChunkHashes []hash.Hash   // Order of metadata chunk hashes
-	Parent          hash.Hash     // Key of the parent chunk
-	Children        []hash.Hash   // Keys of the child chunks
+	Key              hash.Hash
+	Shards           []kvDataShard // Content shards
+	ChunkHashes      []hash.Hash   // Order of content chunk hashes
+	MetaShards       []kvDataShard // Metadata shards
+	MetaChunkHashes  []hash.Hash   // Order of metadata chunk hashes
+	Parent           hash.Hash     // Key of the parent chunk
+	CreationUnixTime int64         // Unix timestamp when the data entry was created
+	Alias            []hash.Hash   // Additional aliases pointing to this data
+	Children         []hash.Hash   // Derived child list gathered from parent relationships
 }
 
 // kvDataShard represents a chunk of content that will be stored in the key-value store.

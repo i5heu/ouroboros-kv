@@ -79,7 +79,7 @@ func TestDebugParentChildStorage(t *testing.T) {
 	fmt.Printf("Looking for children of parent: %x\n", parentKey)
 
 	// Create the exact prefix we'll be searching for
-	searchPrefix := fmt.Sprintf("%s%x:", PARENT_PREFIX, parentKey)
+	searchPrefix := fmt.Sprintf("%s%x:", PARENT_PREFIX, parentKey[:])
 	fmt.Printf("Search prefix: %s\n", searchPrefix) // Check if any keys match this prefix
 	kv.badgerDB.View(func(txn *badger.Txn) error {
 		prefix := []byte(searchPrefix)
@@ -106,7 +106,7 @@ func TestDebugParentChildStorage(t *testing.T) {
 
 	// Let me manually test the parsing logic
 	testKey := "parent:ca554068e9109c5fbb193bdaeec5bcbcfe2754528f3cf52a4078f00f76138b3071dc37aa16b7c727fce21f56b5252c1cf41c26f3605879004aeff5af75e00ce0:bc0a7a7acbebda6b21f2eef5ff2a4f5f1629bd0212e5db0f654555874c00e13421c494db2fdab1abc192b665d851acae71e80d7f4971fe7c83be3a3115786708"
-	prefix := fmt.Sprintf("%s%x:", PARENT_PREFIX, parentKey)
+	prefix := fmt.Sprintf("%s%x:", PARENT_PREFIX, parentKey[:])
 	fmt.Printf("Prefix: '%s'\n", prefix)
 	fmt.Printf("Test key: '%s'\n", testKey)
 	fmt.Printf("Prefix length: %d\n", len(prefix))

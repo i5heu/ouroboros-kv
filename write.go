@@ -3,6 +3,7 @@ package ouroboroskv
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/hash"
@@ -28,7 +29,13 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("data key must be zero value; it will be generated from content")
 	}
 
-	data.Key = hash.HashBytes(data.Content) // Calculate the key hash
+	if data.CreationUnixTime == 0 {
+		data.CreationUnixTime = time.Now().Unix()
+	}
+
+	generatedKey, aliases := generateDataKey(data)
+	data.Key = generatedKey
+	data.Alias = aliases
 
 	// Use the encoding pipeline to process the data
 	encoded, err := k.encodeDataPipeline(data)
@@ -57,12 +64,14 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 	}
 
 	metadata := kvDataHash{
-		Key:             encoded.Key,
-		ShardHashes:     contentHashes,
-		MetaShardHashes: metaHashes,
-		Parent:          encoded.Parent,
-		Children:        encoded.Children,
+		Key:              encoded.Key,
+		ShardHashes:      contentHashes,
+		MetaShardHashes:  metaHashes,
+		Parent:           encoded.Parent,
+		CreationUnixTime: encoded.CreationUnixTime,
+		Alias:            encoded.Alias,
 	}
+	fmt.Printf("DEBUG store: key bytes len=%d hex=%x string=%s\n", len(metadata.Key), metadata.Key[:], metadata.Key.String())
 
 	// Use WriteBatch for better handling of large transactions
 	wb := k.badgerDB.NewWriteBatch()
@@ -79,7 +88,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 	}
 
 	// Store parent-child relationships
-	err = k.storeParentChildRelationships(wb, metadata.Key, metadata.Parent, metadata.Children)
+	err = k.storeParentChildRelationships(wb, metadata.Key, metadata.Parent)
 	if err != nil {
 		return hash.Hash{}, fmt.Errorf("failed to store parent-child relationships: %w", err)
 	}
@@ -115,30 +124,36 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 
 // storeMetadata serializes and stores KvDataHash metadata
 func (k *KV) storeMetadata(txn *badger.Txn, metadata kvDataHash) error {
+	metadata.Alias = canonicalizeAliases(metadata.Alias)
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
-		Key:    metadata.Key[:],
-		Parent: metadata.Parent[:],
+		Key:              metadata.Key[:],
+		Parent:           metadata.Parent[:],
+		CreationUnixTime: metadata.CreationUnixTime,
 	}
 
 	// Convert chunk hashes
 	for _, chunkHash := range metadata.ShardHashes {
-		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
+		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, append([]byte(nil), chunkHash[:]...))
 	}
 
-	// Convert children hashes
-	for _, child := range metadata.Children {
-		protoMetadata.Children = append(protoMetadata.Children, child[:])
+	for _, alias := range metadata.Alias {
+		protoMetadata.Aliases = append(protoMetadata.Aliases, append([]byte(nil), alias[:]...))
 	}
+	fmt.Printf("DEBUG protoMetadata before marshal chunk hashes=%d alias=%d keyLen=%d parentLen=%d firstBytes=%x\n", len(protoMetadata.ChunkHashes), len(protoMetadata.Aliases), len(protoMetadata.Key), len(protoMetadata.Parent), protoMetadata.Key[:5])
+	fmt.Printf("DEBUG protoMetadata before marshal chunk hashes=%d alias=%d\n", len(protoMetadata.ChunkHashes), len(protoMetadata.Aliases))
 
 	// Serialize to protobuf
 	data, err := proto.Marshal(protoMetadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
+	fmt.Printf("DEBUG marshaled metadata len=%d size=%d\n", len(data), proto.Size(protoMetadata))
 
 	// Create key with metadata prefix
-	key := fmt.Sprintf("%s%x", METADATA_PREFIX, metadata.Key)
+	key := fmt.Sprintf("%s%x", METADATA_PREFIX, metadata.Key[:])
+	fmt.Printf("DEBUG storeMetadataWithBatch key=%s\n", key)
+	fmt.Printf("DEBUG storeMetadata key=%s\n", key)
 
 	return txn.Set([]byte(key), data)
 }
@@ -167,43 +182,55 @@ func (k *KV) storeChunk(txn *badger.Txn, chunk kvDataShard) error {
 
 	// Create key with chunk prefix and unique identifier
 	// Use chunk hash + Reed-Solomon index to create unique keys for each shard
-	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
+	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash[:], chunk.ReedSolomonIndex)
 
 	return txn.Set([]byte(key), data)
 }
 
 // storeMetadataWithBatch serializes and stores KvDataHash metadata using WriteBatch
 func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) error {
+	metadata.Alias = canonicalizeAliases(metadata.Alias)
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
-		Key:    metadata.Key[:],
-		Parent: metadata.Parent[:],
+		Key:              append([]byte(nil), metadata.Key[:]...),
+		Parent:           append([]byte(nil), metadata.Parent[:]...),
+		CreationUnixTime: metadata.CreationUnixTime,
 	}
+	fmt.Printf("DEBUG storeMetadataWithBatch shards=%d meta=%d alias=%d creation=%d\n", len(metadata.ShardHashes), len(metadata.MetaShardHashes), len(metadata.Alias), metadata.CreationUnixTime)
 
 	// Convert chunk hashes
 	for _, chunkHash := range metadata.ShardHashes {
-		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
+		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, append([]byte(nil), chunkHash[:]...))
 	}
 
-	// Convert children hashes
-	for _, child := range metadata.Children {
-		protoMetadata.Children = append(protoMetadata.Children, child[:])
+	for _, alias := range metadata.Alias {
+		protoMetadata.Aliases = append(protoMetadata.Aliases, append([]byte(nil), alias[:]...))
 	}
+	firstChunkLen := 0
+	firstAliasLen := 0
+	if len(protoMetadata.ChunkHashes) > 0 {
+		firstChunkLen = len(protoMetadata.ChunkHashes[0])
+	}
+	if len(protoMetadata.Aliases) > 0 {
+		firstAliasLen = len(protoMetadata.Aliases[0])
+	}
+	fmt.Printf("DEBUG protoMetadata before marshal chunk hashes=%d alias=%d keyLen=%d parentLen=%d firstChunkLen=%d firstAliasLen=%d\n", len(protoMetadata.ChunkHashes), len(protoMetadata.Aliases), len(protoMetadata.Key), len(protoMetadata.Parent), firstChunkLen, firstAliasLen)
 
 	// Serialize to protobuf
 	data, err := proto.Marshal(protoMetadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
+	fmt.Printf("DEBUG marshaled metadata len=%d size=%d\n", len(data), proto.Size(protoMetadata))
 
 	// Create key with metadata prefix
-	key := fmt.Sprintf("%s%x", METADATA_PREFIX, metadata.Key)
+	key := fmt.Sprintf("%s%x", METADATA_PREFIX, metadata.Key[:])
 
 	return wb.Set([]byte(key), data)
 }
 
 func (k *KV) storeMetadataChunkHashesWithBatch(wb *badger.WriteBatch, key hash.Hash, hashes []hash.Hash) error {
-	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key[:])
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -213,7 +240,7 @@ func (k *KV) storeMetadataChunkHashesWithBatch(wb *badger.WriteBatch, key hash.H
 }
 
 func (k *KV) storeMetadataChunkHashesTxn(txn *badger.Txn, key hash.Hash, hashes []hash.Hash) error {
-	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key[:])
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -246,46 +273,30 @@ func (k *KV) storeChunkWithBatch(wb *badger.WriteBatch, chunk kvDataShard) error
 
 	// Create key with chunk prefix and unique identifier
 	// Use chunk hash + Reed-Solomon index to create unique keys for each shard
-	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
+	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash[:], chunk.ReedSolomonIndex)
 
 	return wb.Set([]byte(key), data)
 }
 
 // storeParentChildRelationships stores bidirectional parent-child relationships in BadgerDB
-func (k *KV) storeParentChildRelationships(wb *badger.WriteBatch, dataKey, parent hash.Hash, children []hash.Hash) error {
+func (k *KV) storeParentChildRelationships(wb *badger.WriteBatch, dataKey, parent hash.Hash) error {
 	// Store parent -> child relationship (if this data has a parent)
 	if !isEmptyHash(parent) {
+		parentStr := parent.String()
+		childStr := dataKey.String()
+
 		// Store: parent:PARENT_HASH -> child:DATA_KEY
-		parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, parent, dataKey)
+		parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, parentStr, childStr)
 		err := wb.Set([]byte(parentToChildKey), []byte(""))
 		if err != nil {
 			return fmt.Errorf("failed to store parent->child relationship: %w", err)
 		}
 
 		// Store: child:DATA_KEY -> parent:PARENT_HASH
-		childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, dataKey, parent)
+		childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, childStr, parentStr)
 		err = wb.Set([]byte(childToParentKey), []byte(""))
 		if err != nil {
 			return fmt.Errorf("failed to store child->parent relationship: %w", err)
-		}
-	}
-
-	// Store child -> parent relationships (for each child this data has)
-	for _, child := range children {
-		if !isEmptyHash(child) {
-			// Store: parent:DATA_KEY -> child:CHILD_HASH
-			parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, dataKey, child)
-			err := wb.Set([]byte(parentToChildKey), []byte(""))
-			if err != nil {
-				return fmt.Errorf("failed to store parent->child relationship: %w", err)
-			}
-
-			// Store: child:CHILD_HASH -> parent:DATA_KEY
-			childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, child, dataKey)
-			err = wb.Set([]byte(childToParentKey), []byte(""))
-			if err != nil {
-				return fmt.Errorf("failed to store child->parent relationship: %w", err)
-			}
 		}
 	}
 
@@ -319,7 +330,13 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			return nil, fmt.Errorf("data key must be zero value; it will be generated from content")
 		}
 
-		data.Key = hash.HashBytes(data.Content) // Calculate the key hash
+		if data.CreationUnixTime == 0 {
+			data.CreationUnixTime = time.Now().Unix()
+		}
+
+		generatedKey, aliases := generateDataKey(data)
+		data.Key = generatedKey
+		data.Alias = aliases
 
 		encoded, err := k.encodeDataPipeline(data)
 		if err != nil {
@@ -349,11 +366,12 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 		}
 
 		metadata := kvDataHash{
-			Key:             encoded.Key,
-			ShardHashes:     contentHashes,
-			MetaShardHashes: metaHashes,
-			Parent:          encoded.Parent,
-			Children:        encoded.Children,
+			Key:              encoded.Key,
+			ShardHashes:      contentHashes,
+			MetaShardHashes:  metaHashes,
+			Parent:           encoded.Parent,
+			CreationUnixTime: encoded.CreationUnixTime,
+			Alias:            encoded.Alias,
 		}
 		allMetadata = append(allMetadata, metadata)
 	}
@@ -372,7 +390,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			}
 
 			// Store parent-child relationships
-			err = k.storeParentChildRelationshipsTxn(txn, metadata.Key, metadata.Parent, metadata.Children)
+			err = k.storeParentChildRelationshipsTxn(txn, metadata.Key, metadata.Parent)
 			if err != nil {
 				return fmt.Errorf("failed to store parent-child relationships for key %x: %w", metadata.Key, err)
 			}
@@ -399,40 +417,24 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 }
 
 // storeParentChildRelationshipsTxn stores parent-child relationships using a transaction
-func (k *KV) storeParentChildRelationshipsTxn(txn *badger.Txn, dataKey, parent hash.Hash, children []hash.Hash) error {
+func (k *KV) storeParentChildRelationshipsTxn(txn *badger.Txn, dataKey, parent hash.Hash) error {
 	// Store parent -> child relationship (if this data has a parent)
 	if !isEmptyHash(parent) {
+		parentStr := parent.String()
+		childStr := dataKey.String()
+
 		// Store: parent:PARENT_HASH -> child:DATA_KEY
-		parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, parent, dataKey)
+		parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, parentStr, childStr)
 		err := txn.Set([]byte(parentToChildKey), []byte{})
 		if err != nil {
 			return fmt.Errorf("failed to store parent->child relationship: %w", err)
 		}
 
 		// Store: child:DATA_KEY -> parent:PARENT_HASH
-		childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, dataKey, parent)
+		childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, childStr, parentStr)
 		err = txn.Set([]byte(childToParentKey), []byte{})
 		if err != nil {
 			return fmt.Errorf("failed to store child->parent relationship: %w", err)
-		}
-	}
-
-	// Store child -> parent relationships (for each child this data has)
-	for _, child := range children {
-		if !isEmptyHash(child) {
-			// Store: parent:DATA_KEY -> child:CHILD_HASH
-			parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, dataKey, child)
-			err := txn.Set([]byte(parentToChildKey), []byte{})
-			if err != nil {
-				return fmt.Errorf("failed to store parent->child relationship: %w", err)
-			}
-
-			// Store: child:CHILD_HASH -> parent:DATA_KEY
-			childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, child, dataKey)
-			err = txn.Set([]byte(childToParentKey), []byte{})
-			if err != nil {
-				return fmt.Errorf("failed to store child->parent relationship: %w", err)
-			}
 		}
 	}
 

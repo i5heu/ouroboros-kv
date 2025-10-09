@@ -27,6 +27,8 @@ func (k *KV) decodeDataPipeline(kvDataLinked kvDataLinked) (Data, error) {
 		MetaData:                metadata,
 		Content:                 content,
 		Parent:                  kvDataLinked.Parent,
+		CreationUnixTime:        kvDataLinked.CreationUnixTime,
+		Alias:                   kvDataLinked.Alias,
 		Children:                kvDataLinked.Children,
 		ReedSolomonShards:       rsShards,
 		ReedSolomonParityShards: rsParity,

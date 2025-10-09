@@ -57,17 +57,13 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			_, err = rand.Read(originalData)
 			require.NoError(t, err)
 
-			// Expected key derived from content
-			expectedKey := hash.HashBytes(originalData)
-
 			// Create Data structure
 			metadata := []byte(fmt.Sprintf("metadata-%s", tc.name))
 
 			data := Data{
 				Content:                 originalData,
 				MetaData:                metadata,
-				Parent:                  hash.Hash{},   // Empty parent
-				Children:                []hash.Hash{}, // No children
+				Parent:                  hash.Hash{}, // Empty parent
 				ReedSolomonShards:       8,
 				ReedSolomonParityShards: 4,
 			}
@@ -76,7 +72,7 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			t.Logf("Writing %s of data...", tc.name)
 			key, err := kv.WriteData(data)
 			require.NoError(t, err, "Failed to write large data")
-			require.Equal(t, expectedKey, key, "Generated key should match content hash")
+			require.False(t, isEmptyHash(key), "Generated key should not be empty")
 
 			// Test ReadData
 			t.Logf("Reading %s of data back...", tc.name)
@@ -88,12 +84,6 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			assert.Equal(t, key, retrievedData.Key, "Keys should match")
 			assert.Equal(t, data.Parent, retrievedData.Parent, "Parents should match")
 			assert.Equal(t, data.MetaData, retrievedData.MetaData, "Metadata should match")
-			// Handle empty slice vs nil slice comparison
-			if len(data.Children) == 0 && len(retrievedData.Children) == 0 {
-				// Both are empty, this is fine
-			} else {
-				assert.Equal(t, data.Children, retrievedData.Children, "Children should match")
-			}
 			assert.Equal(t, data.ReedSolomonShards, retrievedData.ReedSolomonShards, "ReedSolomonShards should match")
 			assert.Equal(t, data.ReedSolomonParityShards, retrievedData.ReedSolomonParityShards, "ReedSolomonParityShards should match")
 

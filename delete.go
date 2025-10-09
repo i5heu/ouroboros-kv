@@ -28,7 +28,7 @@ func (k *KV) DeleteData(key hash.Hash) error {
 
 			// Delete each chunk shard
 			for _, chunk := range chunks {
-				chunkKey := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
+				chunkKey := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash[:], chunk.ReedSolomonIndex)
 				err := txn.Delete([]byte(chunkKey))
 				if err != nil {
 					return fmt.Errorf("failed to delete chunk %s: %w", chunkKey, err)
@@ -37,13 +37,13 @@ func (k *KV) DeleteData(key hash.Hash) error {
 		}
 
 		// Delete metadata
-		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
+		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key[:])
 		err = txn.Delete([]byte(metadataKey))
 		if err != nil {
 			return fmt.Errorf("failed to delete metadata for key %x: %w", key, err)
 		}
 
-		metaChunksKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+		metaChunksKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key[:])
 		err = txn.Delete([]byte(metaChunksKey))
 		if err != nil && err != badger.ErrKeyNotFound {
 			return fmt.Errorf("failed to delete metadata shard hashes for key %x: %w", key, err)

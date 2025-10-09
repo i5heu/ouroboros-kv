@@ -3,12 +3,15 @@ package ouroboroskv
 import (
 	"bytes"
 	"os"
+	"reflect"
 	"testing"
 
 	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/hash"
+	pb "github.com/i5heu/ouroboros-kv/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // setupTestKVForStorage creates a test KV instance for storage tests
@@ -52,9 +55,28 @@ func createTestStorageData() Data {
 		MetaData:                []byte("storage metadata"),
 		Content:                 content,
 		Parent:                  hash.HashString("parent-storage-key"),
-		Children:                []hash.Hash{hash.HashString("child1-storage"), hash.HashString("child2-storage")},
+		CreationUnixTime:        1700000000,
+		Alias:                   []hash.Hash{hash.HashString("alias-storage-b"), hash.HashString("alias-storage-a")},
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
+	}
+}
+
+func TestProtoMarshalSanity(t *testing.T) {
+	msg := &pb.KvDataHashProto{
+		Key:              []byte("abc"),
+		ChunkHashes:      [][]byte{[]byte("chunk")},
+		Parent:           []byte("parent"),
+		CreationUnixTime: 1234,
+		Aliases:          [][]byte{[]byte("alias")},
+	}
+
+	b, err := proto.Marshal(msg)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if len(b) == 0 {
+		t.Fatalf("marshal returned empty bytes")
 	}
 }
 
@@ -63,12 +85,12 @@ func TestWriteData(t *testing.T) {
 	defer cleanup()
 
 	testData := createTestStorageData()
+	expectedKey, _ := generateDataKey(testData)
 
 	key, err := kv.WriteData(testData)
 	if err != nil {
 		t.Fatalf("WriteData failed: %v", err)
 	}
-	expectedKey := hash.HashBytes(testData.Content)
 	if key != expectedKey {
 		t.Errorf("Generated key mismatch: expected %x, got %x", expectedKey, key)
 	}
@@ -113,13 +135,12 @@ func TestReadData(t *testing.T) {
 	if readData.Parent != originalData.Parent {
 		t.Errorf("Parent mismatch: expected %v, got %v", originalData.Parent, readData.Parent)
 	}
-	if len(readData.Children) != len(originalData.Children) {
-		t.Errorf("Children count mismatch: expected %d, got %d", len(originalData.Children), len(readData.Children))
+	if readData.CreationUnixTime != originalData.CreationUnixTime {
+		t.Errorf("CreationUnixTime mismatch: expected %d, got %d", originalData.CreationUnixTime, readData.CreationUnixTime)
 	}
-	for i, child := range readData.Children {
-		if child != originalData.Children[i] {
-			t.Errorf("Child %d mismatch: expected %v, got %v", i, originalData.Children[i], child)
-		}
+	expectedAlias := canonicalizeAliases(originalData.Alias)
+	if !reflect.DeepEqual(readData.Alias, expectedAlias) {
+		t.Errorf("Alias mismatch: expected %v, got %v", expectedAlias, readData.Alias)
 	}
 }
 
@@ -152,7 +173,8 @@ func TestWriteReadRoundTrip(t *testing.T) {
 				MetaData:                []byte("meta-" + tc.name),
 				Content:                 content,
 				Parent:                  hash.HashString("parent"),
-				Children:                []hash.Hash{hash.HashString("child1")},
+				CreationUnixTime:        1700001000 + int64(tc.contentSize),
+				Alias:                   []hash.Hash{},
 				ReedSolomonShards:       tc.shards,
 				ReedSolomonParityShards: tc.parity,
 			}
@@ -162,7 +184,7 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("WriteData failed for %s: %v", tc.name, err)
 			}
-			expectedKey := hash.HashBytes(originalData.Content)
+			expectedKey, _ := generateDataKey(originalData)
 			if key != expectedKey {
 				t.Errorf("Generated key mismatch for %s: expected %x, got %x", tc.name, expectedKey, key)
 			}
@@ -204,7 +226,7 @@ func TestDataExists(t *testing.T) {
 	defer cleanup()
 
 	testData := createTestStorageData()
-	expectedKey := hash.HashBytes(testData.Content)
+	expectedKey, _ := generateDataKey(testData)
 
 	// Check non-existent data
 	exists, err := kv.DataExists(expectedKey)
@@ -248,12 +270,15 @@ func TestBatchWriteData(t *testing.T) {
 		data := Data{
 			Content:                 content,
 			Parent:                  hash.HashString("batch-parent"),
-			Children:                []hash.Hash{},
+			CreationUnixTime:        1700002000 + int64(i),
+			Alias:                   nil,
 			ReedSolomonShards:       2,
 			ReedSolomonParityShards: 1,
 		}
+		expectedKey, aliases := generateDataKey(data)
+		data.Alias = aliases
 		dataList = append(dataList, data)
-		expectedKeys = append(expectedKeys, hash.HashBytes(content))
+		expectedKeys = append(expectedKeys, expectedKey)
 	}
 
 	// Batch write
@@ -293,7 +318,7 @@ func TestBatchReadData(t *testing.T) {
 		data := Data{
 			Content:                 []byte("Batch read test content " + string(rune('0'+i))),
 			Parent:                  hash.HashString("batch-read-parent"),
-			Children:                []hash.Hash{},
+			CreationUnixTime:        1700003000 + int64(i),
 			ReedSolomonShards:       2,
 			ReedSolomonParityShards: 1,
 		}
@@ -338,6 +363,7 @@ func TestListKeys(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		data := Data{
 			Content:                 []byte("List test content " + string(rune('0'+i))),
+			CreationUnixTime:        1700004000 + int64(i),
 			ReedSolomonShards:       2,
 			ReedSolomonParityShards: 1,
 		}
@@ -381,7 +407,7 @@ func TestWriteDataEmptyContent(t *testing.T) {
 	testData := Data{
 		Content:                 []byte{},
 		Parent:                  hash.HashString("parent"),
-		Children:                []hash.Hash{},
+		CreationUnixTime:        1700005000,
 		ReedSolomonShards:       2,
 		ReedSolomonParityShards: 1,
 	}
@@ -391,7 +417,7 @@ func TestWriteDataEmptyContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteData with empty content failed: %v", err)
 	}
-	expectedKey := hash.HashBytes(testData.Content)
+	expectedKey, _ := generateDataKey(testData)
 	if key != expectedKey {
 		t.Errorf("Generated key mismatch for empty content: expected %x, got %x", expectedKey, key)
 	}

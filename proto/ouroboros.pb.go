@@ -23,13 +23,14 @@ const (
 
 // KvDataHashProto represents the metadata for stored data with chunk hashes
 type KvDataHashProto struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           []byte                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                                    // Key of the content (hash.Hash as bytes)
-	ChunkHashes   [][]byte               `protobuf:"bytes,2,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"` // Hashes of KvDataShards
-	Parent        []byte                 `protobuf:"bytes,3,opt,name=parent,proto3" json:"parent,omitempty"`                              // Key of the parent chunk
-	Children      [][]byte               `protobuf:"bytes,4,rep,name=children,proto3" json:"children,omitempty"`                          // Keys of the child chunks
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Key              []byte                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`                                                      // Key of the content (hash.Hash as bytes)
+	ChunkHashes      [][]byte               `protobuf:"bytes,2,rep,name=chunk_hashes,json=chunkHashes,proto3" json:"chunk_hashes,omitempty"`                   // Hashes of KvDataShards
+	Parent           []byte                 `protobuf:"bytes,3,opt,name=parent,proto3" json:"parent,omitempty"`                                                // Key of the parent chunk
+	CreationUnixTime int64                  `protobuf:"varint,5,opt,name=creation_unix_time,json=creationUnixTime,proto3" json:"creation_unix_time,omitempty"` // Unix timestamp when the data entry was created
+	Aliases          [][]byte               `protobuf:"bytes,6,rep,name=aliases,proto3" json:"aliases,omitempty"`                                              // Additional aliases pointing to this data
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *KvDataHashProto) Reset() {
@@ -83,9 +84,16 @@ func (x *KvDataHashProto) GetParent() []byte {
 	return nil
 }
 
-func (x *KvDataHashProto) GetChildren() [][]byte {
+func (x *KvDataHashProto) GetCreationUnixTime() int64 {
 	if x != nil {
-		return x.Children
+		return x.CreationUnixTime
+	}
+	return 0
+}
+
+func (x *KvDataHashProto) GetAliases() [][]byte {
+	if x != nil {
+		return x.Aliases
 	}
 	return nil
 }
@@ -211,12 +219,13 @@ var File_proto_ouroboros_proto protoreflect.FileDescriptor
 
 const file_proto_ouroboros_proto_rawDesc = "" +
 	"\n" +
-	"\x15proto/ouroboros.proto\x12\vouroboroskv\"z\n" +
+	"\x15proto/ouroboros.proto\x12\vouroboroskv\"\xb6\x01\n" +
 	"\x0fKvDataHashProto\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12!\n" +
 	"\fchunk_hashes\x18\x02 \x03(\fR\vchunkHashes\x12\x16\n" +
-	"\x06parent\x18\x03 \x01(\fR\x06parent\x12\x1a\n" +
-	"\bchildren\x18\x04 \x03(\fR\bchildren\"\x8e\x03\n" +
+	"\x06parent\x18\x03 \x01(\fR\x06parent\x12,\n" +
+	"\x12creation_unix_time\x18\x05 \x01(\x03R\x10creationUnixTime\x12\x18\n" +
+	"\aaliases\x18\x06 \x03(\fR\aaliasesJ\x04\b\x04\x10\x05R\bchildren\"\x8e\x03\n" +
 	"\x10KvDataShardProto\x12\x1d\n" +
 	"\n" +
 	"chunk_hash\x18\x01 \x01(\fR\tchunkHash\x12!\n" +

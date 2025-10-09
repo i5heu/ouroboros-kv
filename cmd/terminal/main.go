@@ -206,9 +206,8 @@ func storeFile(kv *ouroboroskv.KV, filePath string) (string, error) {
 	data := ouroboroskv.Data{
 		Content:                 content,
 		MetaData:                metaBytes,
-		Parent:                  hash.Hash{},   // Empty parent
-		Children:                []hash.Hash{}, // No children
-		ReedSolomonShards:       3,             // Default values for Reed-Solomon
+		Parent:                  hash.Hash{}, // Empty parent
+		ReedSolomonShards:       3,           // Default values for Reed-Solomon
 		ReedSolomonParityShards: 2,
 	}
 

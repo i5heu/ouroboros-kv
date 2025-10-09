@@ -1,8 +1,10 @@
 package ouroboroskv
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v4"
@@ -10,6 +12,8 @@ import (
 	pb "github.com/i5heu/ouroboros-kv/proto"
 	"google.golang.org/protobuf/proto"
 )
+
+var hashStringLen = len(hash.Hash{}.String())
 
 // ReadData retrieves and decodes data from the key-value store by its hash key
 func (k *KV) ReadData(key hash.Hash) (Data, error) {
@@ -22,6 +26,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		if err != nil {
 			return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
 		}
+		fmt.Printf("DEBUG metadata shard hashes=%d meta shard hashes=%d\n", len(metadata.ShardHashes), len(metadata.MetaShardHashes))
 
 		// Load all content chunks for this data
 		var contentChunks []kvDataShard
@@ -30,6 +35,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 			if err != nil {
 				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
 			}
+			fmt.Printf("DEBUG loaded %d chunks for hash %s\n", len(chunks), chunkHash.String())
 			contentChunks = append(contentChunks, chunks...)
 		}
 
@@ -45,13 +51,15 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 
 		// Create KvDataLinked structure for decoding
 		kvDataLinked := kvDataLinked{
-			Key:             metadata.Key,
-			Shards:          contentChunks,
-			ChunkHashes:     metadata.ShardHashes,
-			MetaShards:      metadataChunks,
-			MetaChunkHashes: metadata.MetaShardHashes,
-			Parent:          metadata.Parent,
-			Children:        metadata.Children,
+			Key:              metadata.Key,
+			Shards:           contentChunks,
+			ChunkHashes:      metadata.ShardHashes,
+			MetaShards:       metadataChunks,
+			MetaChunkHashes:  metadata.MetaShardHashes,
+			Parent:           metadata.Parent,
+			CreationUnixTime: metadata.CreationUnixTime,
+			Alias:            metadata.Alias,
+			Children:         metadata.Children,
 		}
 
 		// Use decoding pipeline to reconstruct original data
@@ -80,40 +88,59 @@ func (k *KV) GetChildren(parentKey hash.Hash) ([]hash.Hash, error) {
 	var children []hash.Hash
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
-		prefix := []byte(fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey))
-
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false // We only need keys
-		it := txn.NewIterator(opts)
-		defer it.Close()
-
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			key := item.Key()
-
-			// Extract child hash from key: parent:PARENT_HASH:CHILD_HASH
-			keyStr := string(key)
-			prefixLen := len(fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey))
-			if len(keyStr) > prefixLen {
-				childHashHex := keyStr[prefixLen:]
-				log.Debug("Parsing child hash hex", "value", childHashHex, "length", len(childHashHex))
-				if len(childHashHex) == 128 { // 64 bytes = 128 hex chars
-					childHash, err := hash.HashHexadecimal(childHashHex)
-					if err == nil {
-						children = append(children, childHash)
-						log.Debug("Successfully parsed child hash", "hash", fmt.Sprintf("%x", childHash))
-					} else {
-						log.Debug("Failed to parse child hash", "error", err)
-					}
-				} else {
-					log.Debug("Child hash hex wrong length", "expected", 128, "actual", len(childHashHex))
-				}
-			}
-		}
-		return nil
+		var err error
+		children, err = k.getChildrenFromTxn(txn, parentKey)
+		return err
 	})
 
 	return children, err
+}
+
+func (k *KV) getChildrenFromTxn(txn *badger.Txn, parentKey hash.Hash) ([]hash.Hash, error) {
+	prefixKey := fmt.Sprintf("%s%s:", PARENT_PREFIX, parentKey.String())
+	prefix := []byte(prefixKey)
+
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchValues = false
+	it := txn.NewIterator(opts)
+	defer it.Close()
+
+	var children []hash.Hash
+
+	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+		item := it.Item()
+		key := item.Key()
+
+		keyStr := string(key)
+		if len(keyStr) <= len(prefixKey) {
+			continue
+		}
+
+		childHashHex := keyStr[len(prefixKey):]
+		var childHash hash.Hash
+		var err error
+
+		switch len(childHashHex) {
+		case hashStringLen:
+			childHash, err = hash.HashHexadecimal(childHashHex)
+		case hashStringLen * 2:
+			if decoded, decodeErr := hex.DecodeString(childHashHex); decodeErr == nil {
+				childHash, err = hash.HashHexadecimal(string(decoded))
+			}
+		}
+
+		if err != nil {
+			continue
+		}
+
+		children = append(children, childHash)
+	}
+
+	sort.Slice(children, func(i, j int) bool {
+		return bytes.Compare(children[i][:], children[j][:]) < 0
+	})
+
+	return children, nil
 }
 
 // GetParent returns the parent of a given data key
@@ -123,7 +150,7 @@ func (k *KV) GetParent(childKey hash.Hash) (hash.Hash, error) {
 	var parent hash.Hash
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
-		prefix := []byte(fmt.Sprintf("%s%s:", CHILD_PREFIX, childKey))
+		prefix := []byte(fmt.Sprintf("%s%s:", CHILD_PREFIX, childKey.String()))
 
 		opts := badger.DefaultIteratorOptions
 		opts.PrefetchValues = false // We only need keys
@@ -136,15 +163,22 @@ func (k *KV) GetParent(childKey hash.Hash) (hash.Hash, error) {
 
 			// Extract parent hash from key: child:CHILD_HASH:PARENT_HASH
 			keyStr := string(key)
-			parts := len(fmt.Sprintf("%s%s:", CHILD_PREFIX, childKey))
+			parts := len(fmt.Sprintf("%s%s:", CHILD_PREFIX, childKey.String()))
 			if len(keyStr) > parts {
 				parentHashHex := keyStr[parts:]
-				if len(parentHashHex) == 128 { // 64 bytes = 128 hex chars
-					parentHash, err := hash.HashHexadecimal(parentHashHex)
-					if err == nil {
-						parent = parentHash
-						break // Should only be one parent
+				var candidate hash.Hash
+				var err error
+				switch len(parentHashHex) {
+				case hashStringLen:
+					candidate, err = hash.HashHexadecimal(parentHashHex)
+				case hashStringLen * 2:
+					if decoded, decodeErr := hex.DecodeString(parentHashHex); decodeErr == nil {
+						candidate, err = hash.HashHexadecimal(string(decoded))
 					}
+				}
+				if err == nil {
+					parent = candidate
+					break // Should only be one parent
 				}
 			}
 		}
@@ -221,7 +255,8 @@ func (k *KV) GetRoots() ([]hash.Hash, error) {
 // loadMetadata loads and deserializes KvDataHash metadata from storage
 func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 	// Create key with metadata prefix
-	metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
+	metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key[:])
+	fmt.Printf("DEBUG loadMetadata key=%s\n", metadataKey)
 
 	item, err := txn.Get([]byte(metadataKey))
 	if err != nil {
@@ -239,6 +274,7 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 	if err != nil {
 		return kvDataHash{}, fmt.Errorf("failed to read metadata value: %w", err)
 	}
+	fmt.Printf("DEBUG raw metadata bytes len=%d\n", len(protoData))
 
 	// Deserialize protobuf
 	protoMetadata := &pb.KvDataHashProto{}
@@ -246,6 +282,7 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 	if err != nil {
 		return kvDataHash{}, fmt.Errorf("failed to unmarshal metadata: %w", err)
 	}
+	fmt.Printf("DEBUG protoMetadata chunk hashes=%d aliases=%d\n", len(protoMetadata.ChunkHashes), len(protoMetadata.Aliases))
 
 	// Convert back to Go struct
 	metadata := kvDataHash{
@@ -259,6 +296,7 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 
 	// Convert chunk hashes
 	for _, chunkHashBytes := range protoMetadata.ChunkHashes {
+		fmt.Printf("DEBUG chunkHashBytes len=%d\n", len(chunkHashBytes))
 		if len(chunkHashBytes) == 64 {
 			var chunkHash hash.Hash
 			copy(chunkHash[:], chunkHashBytes)
@@ -266,16 +304,24 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 		}
 	}
 
-	// Convert children
-	for _, childBytes := range protoMetadata.Children {
-		if len(childBytes) == 64 {
-			var child hash.Hash
-			copy(child[:], childBytes)
-			metadata.Children = append(metadata.Children, child)
+	metadata.CreationUnixTime = protoMetadata.CreationUnixTime
+
+	for _, aliasBytes := range protoMetadata.Aliases {
+		if len(aliasBytes) == 64 {
+			var alias hash.Hash
+			copy(alias[:], aliasBytes)
+			metadata.Alias = append(metadata.Alias, alias)
 		}
 	}
+	metadata.Alias = canonicalizeAliases(metadata.Alias)
 
-	metaChunksKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+	children, err := k.getChildrenFromTxn(txn, key)
+	if err != nil {
+		return kvDataHash{}, fmt.Errorf("failed to load children: %w", err)
+	}
+	metadata.Children = children
+
+	metaChunksKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key[:])
 	metaItem, err := txn.Get([]byte(metaChunksKey))
 	if err == nil {
 		var raw []byte
@@ -304,7 +350,7 @@ func (k *KV) loadChunksByHash(txn *badger.Txn, chunkHash hash.Hash) ([]kvDataSha
 	var chunks []kvDataShard
 
 	// Create iterator to find all chunks with this hash
-	prefix := fmt.Sprintf("%s%x_", CHUNK_PREFIX, chunkHash)
+	prefix := fmt.Sprintf("%s%x_", CHUNK_PREFIX, chunkHash[:])
 	it := txn.NewIterator(badger.DefaultIteratorOptions)
 	defer it.Close()
 
@@ -395,13 +441,15 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 
 			// Create KvDataLinked structure for decoding
 			kvDataLinked := kvDataLinked{
-				Key:             metadata.Key,
-				Shards:          contentChunks,
-				ChunkHashes:     metadata.ShardHashes,
-				MetaShards:      metadataChunks,
-				MetaChunkHashes: metadata.MetaShardHashes,
-				Parent:          metadata.Parent,
-				Children:        metadata.Children,
+				Key:              metadata.Key,
+				Shards:           contentChunks,
+				ChunkHashes:      metadata.ShardHashes,
+				MetaShards:       metadataChunks,
+				MetaChunkHashes:  metadata.MetaShardHashes,
+				Parent:           metadata.Parent,
+				CreationUnixTime: metadata.CreationUnixTime,
+				Alias:            metadata.Alias,
+				Children:         metadata.Children,
 			}
 
 			// Decode data
@@ -430,7 +478,7 @@ func (k *KV) DataExists(key hash.Hash) (bool, error) {
 
 	var exists bool
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
-		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
+		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key[:])
 		_, err := txn.Get([]byte(metadataKey))
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
@@ -462,35 +510,30 @@ func (k *KV) ListKeys() ([]hash.Hash, error) {
 			item := it.Item()
 			key := item.Key()
 
-			// Extract hash from key (remove prefix)
-			if len(key) > len(METADATA_PREFIX) {
-				hashHex := string(key[len(METADATA_PREFIX):])
-				// The hash is double-encoded: it's hex of hex
-				// First decode to get the "inner" hex string
-				if len(hashHex) == 256 {
-					// Decode the first 128 chars to get ASCII hex
-					innerHexBytes, err := hex.DecodeString(hashHex[:128])
-					if err == nil && len(innerHexBytes) == 64 {
-						// Now we have the original hex string as ASCII
-						innerHex := string(innerHexBytes)
-						if len(innerHex) == 64 {
-							// This should be 64 ASCII hex chars representing 32 bytes
-							// But HashHexadecimal expects 128 hex chars for 64 bytes
-							// Let's try the second half too
-							secondHalfBytes, err := hex.DecodeString(hashHex[128:])
-							if err == nil && len(secondHalfBytes) == 64 {
-								fullInnerHex := string(innerHexBytes) + string(secondHalfBytes)
-								if len(fullInnerHex) == 128 {
-									hashValue, err := hash.HashHexadecimal(fullInnerHex)
-									if err == nil {
-										keys = append(keys, hashValue)
-									}
-								}
-							}
-						}
-					}
-				}
+			if len(key) <= len(METADATA_PREFIX) {
+				continue
 			}
+
+			hashHex := string(key[len(METADATA_PREFIX):])
+			var hashValue hash.Hash
+			var err error
+
+			switch len(hashHex) {
+			case 128:
+				hashValue, err = hash.HashHexadecimal(hashHex)
+			case 256:
+				if decoded, decodeErr := hex.DecodeString(hashHex); decodeErr == nil {
+					hashValue, err = hash.HashHexadecimal(string(decoded))
+				}
+			default:
+				continue
+			}
+
+			if err != nil {
+				continue
+			}
+
+			keys = append(keys, hashValue)
 		}
 		return nil
 	})
@@ -547,6 +590,11 @@ func (k *KV) ListRootKeys() ([]hash.Hash, error) {
 			if len(keyBytes) > len(METADATA_PREFIX) {
 				hashHex := string(keyBytes[len(METADATA_PREFIX):])
 				hashValue, err := hash.HashHexadecimal(hashHex)
+				if err != nil && len(hashHex) == 256 {
+					if decoded, decodeErr := hex.DecodeString(hashHex); decodeErr == nil {
+						hashValue, err = hash.HashHexadecimal(string(decoded))
+					}
+				}
 				if err == nil {
 					roots = append(roots, hashValue)
 				}

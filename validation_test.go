@@ -42,7 +42,7 @@ func TestValidateKeyDetectsCorruption(t *testing.T) {
 		if len(metadata.ShardHashes) == 0 {
 			return fmt.Errorf("no shard hashes found for key %x", key)
 		}
-		chunkKey := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, metadata.ShardHashes[0], 0)
+		chunkKey := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, metadata.ShardHashes[0][:], 0)
 		item, err := txn.Get([]byte(chunkKey))
 		if err != nil {
 			return err

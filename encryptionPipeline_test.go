@@ -3,6 +3,7 @@ package ouroboroskv
 import (
 	"bytes"
 	"os"
+	"reflect"
 	"testing"
 
 	"log/slog"
@@ -52,7 +53,8 @@ func createTestData() Data {
 		MetaData:                []byte("Test metadata"),
 		Content:                 []byte("This is test content for the encryption pipeline. It should be long enough to test chunking functionality."),
 		Parent:                  hash.HashString("parent-key"),
-		Children:                []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
+		CreationUnixTime:        1700000001,
+		Alias:                   []hash.Hash{hash.HashString("alias-2"), hash.HashString("alias-1")},
 		ReedSolomonShards:       3,
 		ReedSolomonParityShards: 2,
 	}
@@ -78,8 +80,14 @@ func TestEncodeDataPipeline(t *testing.T) {
 		t.Errorf("Expected parent %v, got %v", testData.Parent, result.Parent)
 	}
 
-	if len(result.Children) != len(testData.Children) {
-		t.Errorf("Expected %d children, got %d", len(testData.Children), len(result.Children))
+	if result.CreationUnixTime != testData.CreationUnixTime {
+		t.Errorf("Expected creation time %d, got %d", testData.CreationUnixTime, result.CreationUnixTime)
+	}
+
+	expectedAlias := canonicalizeAliases(testData.Alias)
+	actualAlias := canonicalizeAliases(result.Alias)
+	if !reflect.DeepEqual(actualAlias, expectedAlias) {
+		t.Errorf("Expected aliases %v, got %v", expectedAlias, result.Alias)
 	}
 
 	// Verify chunks were created
@@ -315,7 +323,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 				MetaData:                []byte("metadata-" + tc.name),
 				Content:                 content,
 				Parent:                  hash.HashString("parent"),
-				Children:                []hash.Hash{},
+				CreationUnixTime:        1700005000 + int64(tc.contentSize),
 				ReedSolomonShards:       2,
 				ReedSolomonParityShards: 1,
 			}

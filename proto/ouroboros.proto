@@ -9,7 +9,10 @@ message KvDataHashProto {
   bytes key = 1;                    // Key of the content (hash.Hash as bytes)
   repeated bytes chunk_hashes = 2;  // Hashes of KvDataShards
   bytes parent = 3;                 // Key of the parent chunk
-  repeated bytes children = 4;      // Keys of the child chunks
+  reserved 4;
+  reserved "children";
+  int64 creation_unix_time = 5;     // Unix timestamp when the data entry was created
+  repeated bytes aliases = 6;       // Additional aliases pointing to this data
 }
 
 // KvDataShardProto represents a chunk of content that will be stored in the key-value store

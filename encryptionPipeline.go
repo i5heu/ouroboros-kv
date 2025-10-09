@@ -17,20 +17,24 @@ func (k *KV) encodeDataPipeline(data Data) (kvDataLinked, error) {
 	if err != nil {
 		return kvDataLinked{}, err
 	}
+	fmt.Printf("DEBUG encode payload content shards=%d hashes=%d\n", len(contentShards), len(contentHashes))
 
 	metaShards, metaHashes, err := k.encodePayload(data.MetaData, data)
 	if err != nil {
 		return kvDataLinked{}, err
 	}
+	fmt.Printf("DEBUG encode payload meta shards=%d hashes=%d\n", len(metaShards), len(metaHashes))
 
 	return kvDataLinked{
-		Key:             data.Key,
-		Shards:          contentShards,
-		ChunkHashes:     contentHashes,
-		MetaShards:      metaShards,
-		MetaChunkHashes: metaHashes,
-		Parent:          data.Parent,
-		Children:        data.Children,
+		Key:              data.Key,
+		Shards:           contentShards,
+		ChunkHashes:      contentHashes,
+		MetaShards:       metaShards,
+		MetaChunkHashes:  metaHashes,
+		Parent:           data.Parent,
+		CreationUnixTime: data.CreationUnixTime,
+		Alias:            data.Alias,
+		Children:         data.Children,
 	}, nil
 }
 
