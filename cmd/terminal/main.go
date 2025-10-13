@@ -23,6 +23,7 @@ const (
   %s -r <base64_hash>          Restore data by base64 hash (outputs to stdout)
 	%s -v                        Validate stored data integrity
   %s -ls                       List all stored data with detailed information
+  %s -lsx                      List all stored data with extended shard statistics
 
 Examples:
   %s document.pdf              # Store file, returns hash
@@ -30,6 +31,7 @@ Examples:
   %s -r SGVsbG8gV29ybGQ=        # Restore data by hash
 	%s -v                       # Validate stored data
   %s -ls                       # List all stored data
+  %s -lsx                      # List with Reed-Solomon shard statistics
 
 Note: 
   The CLI automatically creates and manages encryption keys in the current directory.
@@ -42,8 +44,8 @@ func printUsage(progName string) {
 	fmt.Fprintf(
 		os.Stderr,
 		USAGE,
-		progName, progName, progName, progName, progName,
-		progName, progName, progName, progName, progName,
+		progName, progName, progName, progName, progName, progName,
+		progName, progName, progName, progName, progName, progName,
 	)
 }
 
@@ -97,6 +99,17 @@ func main() {
 			os.Exit(1)
 		}
 		if err := listStoredData(kv); err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing stored data: %v\n", err)
+			os.Exit(1)
+		}
+
+	case "-lsx":
+		if len(os.Args) != 2 {
+			fmt.Fprintf(os.Stderr, "Error: -lsx does not take any arguments\n")
+			printUsage(progName)
+			os.Exit(1)
+		}
+		if err := listStoredDataExtended(kv); err != nil {
 			fmt.Fprintf(os.Stderr, "Error listing stored data: %v\n", err)
 			os.Exit(1)
 		}
@@ -334,6 +347,124 @@ func listStoredData(kv *ouroboroskv.KV) error {
 			formatBytes(fileSize),
 			info.NumChunks,
 			info.MetaNumChunks,
+			savedAt,
+		)
+
+		totalContentChunks += info.NumChunks
+		totalMetadataChunks += info.MetaNumChunks
+		totalFileSize += fileSize
+	}
+
+	if err := tw.Flush(); err != nil {
+		return fmt.Errorf("failed to render table: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("Summary:\n")
+	fmt.Printf("  Entries: %d\n", len(dataInfos))
+	fmt.Printf("  Total stored size: %s (%d bytes)\n", formatBytes(totalFileSize), totalFileSize)
+	fmt.Printf("  Content chunks: %d\n", totalContentChunks)
+	fmt.Printf("  Metadata chunks: %d\n", totalMetadataChunks)
+	fmt.Printf("  All chunks: %d\n", totalContentChunks+totalMetadataChunks)
+
+	return nil
+}
+
+func listStoredDataExtended(kv *ouroboroskv.KV) error {
+	// Get detailed information about all stored data
+	dataInfos, err := kv.ListStoredData()
+	if err != nil {
+		return fmt.Errorf("failed to list stored data: %w", err)
+	}
+
+	if len(dataInfos) == 0 {
+		fmt.Println("No data stored in the database.")
+		return nil
+	}
+
+	fmt.Printf("Found %d stored data entries:\n\n", len(dataInfos))
+
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "INDEX\tHASH (BASE64)\tFILENAME\tSIZE\tRS CONFIG\tTOTAL SHARDS\tSHARD MIN\tSHARD AVG\tSHARD MAX\tSAVED AT")
+
+	var (
+		totalContentChunks  int
+		totalMetadataChunks int
+		totalFileSize       uint64
+	)
+
+	for i, info := range dataInfos {
+		fileName := "<unknown>"
+		savedAt := "-"
+		fileSize := info.ClearTextSize
+
+		var metaPayload struct {
+			FileName      string `json:"fileName"`
+			SavedAt       string `json:"savedAt"`
+			FileSizeBytes int64  `json:"fileSizeBytes"`
+		}
+
+		if len(info.MetaData) > 0 {
+			if err := json.Unmarshal(info.MetaData, &metaPayload); err == nil {
+				if metaPayload.FileName != "" {
+					fileName = metaPayload.FileName
+				}
+				if metaPayload.SavedAt != "" {
+					savedAt = metaPayload.SavedAt
+				}
+				if metaPayload.FileSizeBytes > 0 {
+					fileSize = uint64(metaPayload.FileSizeBytes)
+				}
+			} else {
+				var legacy map[string]string
+				if err := json.Unmarshal(info.MetaData, &legacy); err == nil {
+					if name := legacy["fileName"]; name != "" {
+						fileName = name
+					}
+					if ts := legacy["savedAt"]; ts != "" {
+						savedAt = ts
+					}
+				}
+			}
+		}
+
+		// Calculate shard statistics
+		var minSize, maxSize, totalSize uint64
+		var shardCount int
+		minSize = ^uint64(0) // Start with max uint64
+
+		for _, chunk := range info.ChunkDetails {
+			for _, shard := range chunk.ShardDetails {
+				shardCount++
+				totalSize += shard.Size
+				if shard.Size < minSize {
+					minSize = shard.Size
+				}
+				if shard.Size > maxSize {
+					maxSize = shard.Size
+				}
+			}
+		}
+
+		var avgSize uint64
+		if shardCount > 0 {
+			avgSize = totalSize / uint64(shardCount)
+		} else {
+			minSize = 0 // Reset if no shards found
+		}
+
+		rsConfig := fmt.Sprintf("%d+%d", info.ReedSolomonShards, info.ReedSolomonParityShards)
+
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
+			i+1,
+			shortenHash(info.KeyBase64),
+			fileName,
+			formatBytes(fileSize),
+			rsConfig,
+			shardCount,
+			formatBytes(minSize),
+			formatBytes(avgSize),
+			formatBytes(maxSize),
 			savedAt,
 		)
 
