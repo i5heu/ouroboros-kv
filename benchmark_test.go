@@ -23,11 +23,11 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 			values[i] = make([]byte, valueSize)
 			rand.Read(values[i])
 			dataObjs[i] = Data{
-				Content:                 values[i],
-				Parent:                  hash.Hash{},
-				Children:                []hash.Hash{},
-				ReedSolomonShards:       2,
-				ReedSolomonParityShards: 1,
+				Content:        values[i],
+				Parent:         hash.Hash{},
+				Children:       []hash.Hash{},
+				RSDataSlices:   2,
+				RSParitySlices: 1,
 			}
 		}
 
@@ -58,11 +58,11 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 			values[i] = make([]byte, valueSize)
 			rand.Read(values[i])
 			dataObjs[i] = Data{
-				Content:                 values[i],
-				Parent:                  hash.Hash{},
-				Children:                []hash.Hash{},
-				ReedSolomonShards:       2,
-				ReedSolomonParityShards: 1,
+				Content:        values[i],
+				Parent:         hash.Hash{},
+				Children:       []hash.Hash{},
+				RSDataSlices:   2,
+				RSParitySlices: 1,
 			}
 		}
 
@@ -100,11 +100,11 @@ func BenchmarkWriteReadNavigation(b *testing.B) {
 			values[i] = make([]byte, valueSize)
 			rand.Read(values[i])
 			dataObjs[i] = Data{
-				Content:                 values[i],
-				Parent:                  hash.Hash{},
-				Children:                []hash.Hash{},
-				ReedSolomonShards:       2,
-				ReedSolomonParityShards: 1,
+				Content:        values[i],
+				Parent:         hash.Hash{},
+				Children:       []hash.Hash{},
+				RSDataSlices:   2,
+				RSParitySlices: 1,
 			}
 		}
 

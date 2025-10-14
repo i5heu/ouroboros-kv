@@ -8,30 +8,30 @@ import (
 	"github.com/i5heu/ouroboros-crypt/hash"
 )
 
-// DeleteData removes data and all its associated chunks from the key-value store
+// DeleteData removes data and all its associated slices from the key-value store
 func (k *KV) DeleteData(key hash.Hash) error {
 	atomic.AddUint64(&k.writeCounter, 1)
 
 	err := k.badgerDB.Update(func(txn *badger.Txn) error {
-		// First, load metadata to find all chunks that need to be deleted
+		// First, load metadata to find all slices that need to be deleted
 		metadata, err := k.loadMetadata(txn, key)
 		if err != nil {
 			return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
 		}
 
-		// Delete all chunks associated with this data
-		for _, chunkHash := range metadata.ShardHashes {
-			chunks, err := k.loadChunksByHash(txn, chunkHash)
+		// Delete all slices associated with this data
+		for _, chunkHash := range metadata.ChunkHashes {
+			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
-				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
+				return fmt.Errorf("failed to load slices for hash %x: %w", chunkHash, err)
 			}
 
-			// Delete each chunk shard
-			for _, chunk := range chunks {
-				chunkKey := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
-				err := txn.Delete([]byte(chunkKey))
+			// Delete each slice record
+			for _, slice := range slices {
+				sliceKey := fmt.Sprintf("%s%x_%d", SLICE_PREFIX, slice.ChunkHash, slice.RSSliceIndex)
+				err := txn.Delete([]byte(sliceKey))
 				if err != nil {
-					return fmt.Errorf("failed to delete chunk %s: %w", chunkKey, err)
+					return fmt.Errorf("failed to delete slice %s: %w", sliceKey, err)
 				}
 			}
 		}
@@ -43,10 +43,10 @@ func (k *KV) DeleteData(key hash.Hash) error {
 			return fmt.Errorf("failed to delete metadata for key %x: %w", key, err)
 		}
 
-		metaChunksKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+		metaChunksKey := fmt.Sprintf("%s%x", META_CHUNK_HASH_PREFIX, key)
 		err = txn.Delete([]byte(metaChunksKey))
 		if err != nil && err != badger.ErrKeyNotFound {
-			return fmt.Errorf("failed to delete metadata shard hashes for key %x: %w", key, err)
+			return fmt.Errorf("failed to delete metadata chunk hashes for key %x: %w", key, err)
 		}
 
 		return nil

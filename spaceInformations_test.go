@@ -16,21 +16,25 @@ func TestGetDeviceAndMountPoint_Success(t *testing.T) {
 		t.Skip("no partitions available on this system")
 	}
 
+	temp := t.TempDir()
+	absTemp, err := filepath.Abs(temp)
+	if err != nil {
+		t.Fatalf("failed to resolve temp dir: %v", err)
+	}
+
 	var chosen *disk.PartitionStat
-	t.Log("Available partitions with mountpoints:")
 	for i := range partitions {
 		p := partitions[i]
-		t.Log(p.Mountpoint)
-		if p.Mountpoint != "" {
+		if p.Mountpoint != "" && contains(absTemp, p.Mountpoint) {
 			chosen = &p
 			break
 		}
 	}
 	if chosen == nil {
-		t.Skip("no partition with a mountpoint found")
+		t.Skipf("no partition with a mountpoint covering temp dir %q", absTemp)
 	}
 
-	path := filepath.Join(chosen.Mountpoint, "some", "sub", "path")
+	path := filepath.Join(temp, "some", "sub", "path")
 	mountPoint, device, err := getDeviceAndMountPoint(path)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)

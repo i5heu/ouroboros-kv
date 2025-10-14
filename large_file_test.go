@@ -61,12 +61,12 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			metadata := []byte(fmt.Sprintf("metadata-%s", tc.name))
 
 			data := applyTestDefaults(Data{
-				Content:                 originalData,
-				MetaData:                metadata,
-				Parent:                  hash.Hash{},   // Empty parent
-				Children:                []hash.Hash{}, // No children
-				ReedSolomonShards:       8,
-				ReedSolomonParityShards: 4,
+				Content:        originalData,
+				MetaData:       metadata,
+				Parent:         hash.Hash{},   // Empty parent
+				Children:       []hash.Hash{}, // No children
+				RSDataSlices:   8,
+				RSParitySlices: 4,
 			})
 
 			expectedKey := expectedKeyForData(data)
@@ -95,8 +95,8 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			} else {
 				assert.Equal(t, data.Children, retrievedData.Children, "Children should match")
 			}
-			assert.Equal(t, data.ReedSolomonShards, retrievedData.ReedSolomonShards, "ReedSolomonShards should match")
-			assert.Equal(t, data.ReedSolomonParityShards, retrievedData.ReedSolomonParityShards, "ReedSolomonParityShards should match")
+			assert.Equal(t, data.RSDataSlices, retrievedData.RSDataSlices, "RSDataSlices should match")
+			assert.Equal(t, data.RSParitySlices, retrievedData.RSParitySlices, "RSParitySlices should match")
 
 			// Most importantly - verify content integrity
 			if !bytes.Equal(originalData, retrievedData.Content) {
@@ -169,12 +169,12 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 
 			// Create Data structure
 			data := applyTestDefaults(Data{
-				MetaData:                []byte(fmt.Sprintf("metadata-%s", tc.name)),
-				Content:                 originalData,
-				Parent:                  hash.Hash{},
-				Children:                []hash.Hash{},
-				ReedSolomonShards:       8,
-				ReedSolomonParityShards: 4,
+				MetaData:       []byte(fmt.Sprintf("metadata-%s", tc.name)),
+				Content:        originalData,
+				Parent:         hash.Hash{},
+				Children:       []hash.Hash{},
+				RSDataSlices:   8,
+				RSParitySlices: 4,
 			})
 			expectedKey := expectedKeyForData(data)
 			data.Key = expectedKey
@@ -190,9 +190,9 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			assert.Equal(t, data.Children, encoded.Children, "Children should be preserved in encoding")
 			assert.Equal(t, data.Created, encoded.Created, "Created should be preserved in encoding")
 			assert.Equal(t, data.Aliases, encoded.Aliases, "Aliases should be preserved in encoding")
-			assert.NotEmpty(t, encoded.Shards, "Encoded data should have chunks")
+			assert.NotEmpty(t, encoded.Slices, "Encoded data should have chunks")
 
-			t.Logf("Encoded into %d chunks", len(encoded.Shards))
+			t.Logf("Encoded into %d chunks", len(encoded.Slices))
 
 			// Test decoding pipeline
 			t.Logf("Testing decoding pipeline...")
@@ -206,8 +206,8 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			assert.Equal(t, data.Created, decoded.Created, "Created should match after decode")
 			assert.Equal(t, data.Aliases, decoded.Aliases, "Aliases should match after decode")
 			assert.Equal(t, data.MetaData, decoded.MetaData, "Metadata should match after decode")
-			assert.Equal(t, data.ReedSolomonShards, decoded.ReedSolomonShards, "ReedSolomonShards should match after decode")
-			assert.Equal(t, data.ReedSolomonParityShards, decoded.ReedSolomonParityShards, "ReedSolomonParityShards should match after decode")
+			assert.Equal(t, data.RSDataSlices, decoded.RSDataSlices, "RSDataSlices should match after decode")
+			assert.Equal(t, data.RSParitySlices, decoded.RSParitySlices, "RSParitySlices should match after decode")
 
 			// Most importantly - verify content integrity
 			if !bytes.Equal(originalData, decoded.Content) {
@@ -284,11 +284,11 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 			require.NoError(t, err)
 
 			data := applyTestDefaults(Data{
-				Content:                 content,
-				Parent:                  hash.Hash{},
-				Children:                []hash.Hash{},
-				ReedSolomonShards:       8,
-				ReedSolomonParityShards: 4,
+				Content:        content,
+				Parent:         hash.Hash{},
+				Children:       []hash.Hash{},
+				RSDataSlices:   8,
+				RSParitySlices: 4,
 			})
 			expectedKey := expectedKeyForData(data)
 

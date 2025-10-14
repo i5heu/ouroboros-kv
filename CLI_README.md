@@ -75,7 +75,7 @@ The CLI implements the requirements as specified:
 
 1. **Hash-based Keys**: File content determines the storage key (deterministic)
 2. **Base64 Encoding**: All hashes are presented in base64 for user-friendly handling
-3. **Fixed Reed-Solomon Configuration**: Uses 3 data shards + 2 parity shards for reliability
+3. **Fixed Reed-Solomon Configuration**: Uses 3 data slices + 2 parity slices for reliability
 4. **Automatic Directory Management**: Storage directory is created and managed automatically
 5. **Simple Interface**: Three operations only: store, retrieve, delete
 

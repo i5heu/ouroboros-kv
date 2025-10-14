@@ -50,12 +50,12 @@ func TestDecodeDataPipeline(t *testing.T) {
 
 	// Create test data
 	originalData := Data{
-		Key:                     hash.HashString("test-key-decode"),
-		Content:                 []byte("This is test content for the decryption pipeline. It should be long enough to test the full pipeline."),
-		Parent:                  hash.HashString("parent-key"),
-		Children:                []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Key:            hash.HashString("test-key-decode"),
+		Content:        []byte("This is test content for the decryption pipeline. It should be long enough to test the full pipeline."),
+		Parent:         hash.HashString("parent-key"),
+		Children:       []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	}
 
 	// Encode the data using the encryption pipeline
@@ -96,12 +96,12 @@ func TestDecodeDataPipelineEmptyContent(t *testing.T) {
 
 	// Create test data with empty content
 	originalData := Data{
-		Key:                     hash.HashString("test-key-empty"),
-		Content:                 []byte{},
-		Parent:                  hash.HashString("parent-key"),
-		Children:                []hash.Hash{},
-		ReedSolomonShards:       2,
-		ReedSolomonParityShards: 1,
+		Key:            hash.HashString("test-key-empty"),
+		Content:        []byte{},
+		Parent:         hash.HashString("parent-key"),
+		Children:       []hash.Hash{},
+		RSDataSlices:   2,
+		RSParitySlices: 1,
 	}
 
 	// Encode the data
@@ -128,10 +128,10 @@ func TestReedSolomonReconstructor(t *testing.T) {
 
 	// Create test data and encode it to get Reed-Solomon chunks
 	testData := Data{
-		Key:                     hash.HashString("test-rs-reconstruct"),
-		Content:                 []byte("This is test content for Reed-Solomon reconstruction testing."),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Key:            hash.HashString("test-rs-reconstruct"),
+		Content:        []byte("This is test content for Reed-Solomon reconstruction testing."),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	}
 
 	encoded, err := kv.encodeDataPipeline(testData)
@@ -140,8 +140,8 @@ func TestReedSolomonReconstructor(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash (simulating what decodeDataPipeline does)
-	chunkGroups := make(map[hash.Hash][]kvDataShard)
-	for _, chunk := range encoded.Shards {
+	chunkGroups := make(map[hash.Hash][]SliceRecord)
+	for _, chunk := range encoded.Slices {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
 
@@ -171,16 +171,16 @@ func TestReedSolomonReconstructor(t *testing.T) {
 	}
 }
 
-func TestReedSolomonReconstructorWithMissingShards(t *testing.T) {
+func TestReedSolomonReconstructorWithMissingSlices(t *testing.T) {
 	kv, cleanup := setupTestKVForDecryption(t)
 	defer cleanup()
 
-	// Create test data with Reed-Solomon configuration that allows for missing shards
+	// Create test data with Reed-Solomon configuration that allows for missing slices
 	testData := Data{
-		Key:                     hash.HashString("test-rs-missing"),
-		Content:                 []byte("This is test content for testing Reed-Solomon reconstruction with missing shards."),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2, // Can lose up to 2 shards
+		Key:            hash.HashString("test-rs-missing"),
+		Content:        []byte("This is test content for testing Reed-Solomon reconstruction with missing slices."),
+		RSDataSlices:   3,
+		RSParitySlices: 2, // Can lose up to 2 slices
 	}
 
 	encoded, err := kv.encodeDataPipeline(testData)
@@ -189,30 +189,30 @@ func TestReedSolomonReconstructorWithMissingShards(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash
-	chunkGroups := make(map[hash.Hash][]kvDataShard)
-	for _, chunk := range encoded.Shards {
+	chunkGroups := make(map[hash.Hash][]SliceRecord)
+	for _, chunk := range encoded.Slices {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
 
-	// Test reconstruction with missing shards for each chunk group
+	// Test reconstruction with missing slices for each chunk group
 	for chunkHash, chunks := range chunkGroups {
-		// Remove one shard (should still be able to reconstruct)
+		// Remove one slice (should still be able to reconstruct)
 		incompleteChunks := chunks[:len(chunks)-1]
 
 		reconstructed, err := kv.reedSolomonReconstructor(incompleteChunks)
 		if err != nil {
-			t.Fatalf("Failed to reconstruct chunk group %v with missing shard: %v", chunkHash, err)
+			t.Fatalf("Failed to reconstruct chunk group %v with missing slice: %v", chunkHash, err)
 		}
 
 		// Verify the reconstructed chunk is valid
 		if len(reconstructed.Ciphertext) == 0 {
-			t.Error("Reconstructed ciphertext is empty with missing shard")
+			t.Error("Reconstructed ciphertext is empty with missing slice")
 		}
 
 		// Test that we can decrypt the reconstructed data
 		_, err = kv.crypt.Decrypt(reconstructed)
 		if err != nil {
-			t.Errorf("Failed to decrypt reconstructed data with missing shard: %v", err)
+			t.Errorf("Failed to decrypt reconstructed data with missing slice: %v", err)
 		}
 	}
 }
@@ -222,25 +222,25 @@ func TestReedSolomonReconstructorErrors(t *testing.T) {
 	defer cleanup()
 
 	// Test with no chunks
-	_, err := kv.reedSolomonReconstructor([]kvDataShard{})
+	_, err := kv.reedSolomonReconstructor([]SliceRecord{})
 	if err == nil {
 		t.Error("Expected error when reconstructing with no chunks")
 	}
 
 	// Test with invalid Reed-Solomon index
-	invalidChunk := kvDataShard{
-		ChunkHash:               hash.HashString("test"),
-		ReedSolomonShards:       2,
-		ReedSolomonParityShards: 1,
-		ReedSolomonIndex:        5, // Invalid index (should be 0-2)
-		Size:                    10,
-		OriginalSize:            30,
-		ChunkContent:            []byte("test"),
-		EncapsulatedKey:         []byte("key"),
-		Nonce:                   []byte("nonce"),
+	invalidChunk := SliceRecord{
+		ChunkHash:       hash.HashString("test"),
+		RSDataSlices:    2,
+		RSParitySlices:  1,
+		RSSliceIndex:    5, // Invalid index (should be 0-2)
+		Size:            10,
+		OriginalSize:    30,
+		Payload:         []byte("test"),
+		EncapsulatedKey: []byte("key"),
+		Nonce:           []byte("nonce"),
 	}
 
-	_, err = kv.reedSolomonReconstructor([]kvDataShard{invalidChunk})
+	_, err = kv.reedSolomonReconstructor([]SliceRecord{invalidChunk})
 	if err == nil {
 		t.Error("Expected error when reconstructing with invalid Reed-Solomon index")
 	}
@@ -309,7 +309,7 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 	testCases := []struct {
 		name        string
 		contentSize int
-		shards      uint8
+		slices      uint8
 		parity      uint8
 	}{
 		{"tiny", 5, 2, 1},
@@ -327,12 +327,12 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 			}
 
 			originalData := Data{
-				Key:                     hash.HashString("roundtrip-" + tc.name),
-				Content:                 content,
-				Parent:                  hash.HashString("parent"),
-				Children:                []hash.Hash{hash.HashString("child1")},
-				ReedSolomonShards:       tc.shards,
-				ReedSolomonParityShards: tc.parity,
+				Key:            hash.HashString("roundtrip-" + tc.name),
+				Content:        content,
+				Parent:         hash.HashString("parent"),
+				Children:       []hash.Hash{hash.HashString("child1")},
+				RSDataSlices:   tc.slices,
+				RSParitySlices: tc.parity,
 			}
 
 			// Encode
@@ -364,10 +364,10 @@ func TestDecodeDataPipelineWithCorruptedChunk(t *testing.T) {
 
 	// Create and encode test data with enough parity to handle corruption
 	originalData := Data{
-		Key:                     hash.HashString("test-corrupt"),
-		Content:                 []byte("This content will be corrupted during testing."),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 3, // More parity shards for better error correction
+		Key:            hash.HashString("test-corrupt"),
+		Content:        []byte("This content will be corrupted during testing."),
+		RSDataSlices:   3,
+		RSParitySlices: 3, // More parity slices for better error correction
 	}
 
 	encoded, err := kv.encodeDataPipeline(originalData)
@@ -375,28 +375,28 @@ func TestDecodeDataPipelineWithCorruptedChunk(t *testing.T) {
 		t.Fatalf("Failed to encode test data: %v", err)
 	}
 
-	// Corrupt a parity shard (not a data shard) to test error correction
-	corruptedParityShard := false
-	for i, chunk := range encoded.Shards {
-		if chunk.ReedSolomonIndex >= originalData.ReedSolomonShards { // This is a parity shard
-			encoded.Shards[i].ChunkContent[0] ^= 0xFF // Flip bits
-			corruptedParityShard = true
+	// Corrupt a parity slice (not a data slice) to test error correction
+	corruptedParitySlice := false
+	for i, chunk := range encoded.Slices {
+		if chunk.RSSliceIndex >= originalData.RSDataSlices { // This is a parity slice
+			encoded.Slices[i].Payload[0] ^= 0xFF // Flip bits
+			corruptedParitySlice = true
 			break
 		}
 	}
 
-	if !corruptedParityShard {
-		t.Skip("No parity shard found to corrupt")
+	if !corruptedParitySlice {
+		t.Skip("No parity slice found to corrupt")
 	}
 
 	// Try to decode - should still work due to Reed-Solomon error correction
 	decoded, err := kv.decodeDataPipeline(encoded)
 	if err != nil {
-		t.Fatalf("Failed to decode data with corrupted parity shard: %v", err)
+		t.Fatalf("Failed to decode data with corrupted parity slice: %v", err)
 	}
 
 	// Verify the content is still correct (Reed-Solomon should have corrected the error)
 	if !bytes.Equal(decoded.Content, originalData.Content) {
-		t.Error("Reed-Solomon failed to correct corrupted parity shard")
+		t.Error("Reed-Solomon failed to correct corrupted parity slice")
 	}
 }
