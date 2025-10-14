@@ -452,3 +452,61 @@ func TestBatchReadEmptyList(t *testing.T) {
 		t.Errorf("Expected nil result for empty list, got %v", result)
 	}
 }
+
+func TestDuplicateWriteDelete(t *testing.T) {
+	kv, cleanup := setupTestKVForStorage(t)
+	defer cleanup()
+
+	// Create test data
+	testData := createTestStorageData()
+
+	// Write the same data 10 times
+	var keys []hash.Hash
+	for i := 0; i < 10; i++ {
+		key, err := kv.WriteData(testData)
+		if err != nil {
+			t.Fatalf("WriteData failed at iteration %d: %v", i, err)
+		}
+		keys = append(keys, key)
+	}
+
+	// Delete one of the keys (e.g., the 5th)
+	err := kv.DeleteData(keys[4])
+	if err != nil {
+		t.Fatalf("DeleteData failed for key %x: %v", keys[4], err)
+	}
+
+	// Check the deleted key no longer exists
+	exists, err := kv.DataExists(keys[4])
+	if err != nil {
+		t.Fatalf("DataExists failed for deleted key: %v", err)
+	}
+	if exists {
+		t.Errorf("Deleted key %x should not exist", keys[4])
+	}
+
+	// Check the other 9 keys still exist and can be read
+	for i, key := range keys {
+		if i == 4 {
+			continue // already checked deleted key
+		}
+		exists, err := kv.DataExists(key)
+		if err != nil {
+			t.Errorf("DataExists failed for key %d: %v", i, err)
+			continue
+		}
+		if !exists {
+			t.Errorf("Key %d (%x) should exist but does not", i, key)
+			continue
+		}
+		readData, err := kv.ReadData(key)
+		if err != nil {
+			t.Errorf("ReadData failed for key %d: %v", i, err)
+			continue
+		}
+		if !bytes.Equal(readData.Content, testData.Content) {
+			t.Errorf("Content mismatch for key %d", i)
+		}
+	}
+}
+
