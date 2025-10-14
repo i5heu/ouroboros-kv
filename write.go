@@ -92,18 +92,34 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("failed to store parent-child relationships: %w", err)
 	}
 
-	// Store all content slices
+	// Store all content slices (skip existing to enable deduplication)
 	for _, slices := range contentSliceMap {
 		for _, slice := range slices {
+			key := []byte(fmt.Sprintf("%s%x_%d", SLICE_PREFIX, slice.ChunkHash, slice.RSSliceIndex))
+			exists, err := k.dbKeyExists(key)
+			if err != nil {
+				return hash.Hash{}, fmt.Errorf("failed to check existing slice: %w", err)
+			}
+			if exists {
+				continue
+			}
 			if err := k.storeSliceWithBatch(wb, slice); err != nil {
 				return hash.Hash{}, fmt.Errorf("failed to store slice: %w", err)
 			}
 		}
 	}
 
-	// Store all metadata slices
+	// Store all metadata slices (skip existing to enable deduplication)
 	for _, slices := range metaSliceMap {
 		for _, slice := range slices {
+			key := []byte(fmt.Sprintf("%s%x_%d", SLICE_PREFIX, slice.ChunkHash, slice.RSSliceIndex))
+			exists, err := k.dbKeyExists(key)
+			if err != nil {
+				return hash.Hash{}, fmt.Errorf("failed to check existing metadata slice: %w", err)
+			}
+			if exists {
+				continue
+			}
 			if err := k.storeSliceWithBatch(wb, slice); err != nil {
 				return hash.Hash{}, fmt.Errorf("failed to store metadata slice: %w", err)
 			}
@@ -257,6 +273,24 @@ func (k *KV) storeSliceWithBatch(wb *badger.WriteBatch, slice SliceRecord) error
 	key := fmt.Sprintf("%s%x_%d", SLICE_PREFIX, slice.ChunkHash, slice.RSSliceIndex)
 
 	return wb.Set([]byte(key), data)
+}
+
+// dbKeyExists checks whether a given key exists in BadgerDB (transactional view)
+func (k *KV) dbKeyExists(key []byte) (bool, error) {
+	var exists bool
+	err := k.badgerDB.View(func(txn *badger.Txn) error {
+		_, err := txn.Get(key)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				exists = false
+				return nil
+			}
+			return err
+		}
+		exists = true
+		return nil
+	})
+	return exists, err
 }
 
 // storeParentChildRelationships stores bidirectional parent-child relationships in BadgerDB
@@ -424,9 +458,19 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			}
 		}
 
-		// Store all slices
+		// Store all slices (skip existing to enable deduplication)
 		for _, slice := range allSlices {
-			err := k.storeSlice(txn, slice)
+			key := []byte(fmt.Sprintf("%s%x_%d", SLICE_PREFIX, slice.ChunkHash, slice.RSSliceIndex))
+			_, err := txn.Get(key)
+			if err == nil {
+				// already exists, skip
+				continue
+			}
+			if err != badger.ErrKeyNotFound {
+				return fmt.Errorf("failed to check slice existence for %x: %w", slice.ChunkHash, err)
+			}
+
+			err = k.storeSlice(txn, slice)
 			if err != nil {
 				return fmt.Errorf("failed to store slice for hash %x: %w", slice.ChunkHash, err)
 			}
