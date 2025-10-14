@@ -18,10 +18,17 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 
 	var data Data
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
+		canonicalKey := key
+		if resolved, found, err := k.resolveAliasTxn(txn, key); err != nil {
+			return fmt.Errorf("failed to resolve alias for key %x: %w", key, err)
+		} else if found {
+			canonicalKey = resolved
+		}
+
 		// Load metadata first
-		metadata, err := k.loadMetadata(txn, key)
+		metadata, err := k.loadMetadata(txn, canonicalKey)
 		if err != nil {
-			return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
+			return fmt.Errorf("failed to load metadata for key %x: %w", canonicalKey, err)
 		}
 
 		children, err := collectChildrenForTxn(txn, metadata.Key)
@@ -385,15 +392,22 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 	var results []Data
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
 		for _, key := range keys {
+			canonicalKey := key
+			if resolved, found, err := k.resolveAliasTxn(txn, key); err != nil {
+				return fmt.Errorf("failed to resolve alias for key %x: %w", key, err)
+			} else if found {
+				canonicalKey = resolved
+			}
+
 			// Load metadata
-			metadata, err := k.loadMetadata(txn, key)
+			metadata, err := k.loadMetadata(txn, canonicalKey)
 			if err != nil {
-				return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
+				return fmt.Errorf("failed to load metadata for key %x: %w", canonicalKey, err)
 			}
 
 			children, err := collectChildrenForTxn(txn, metadata.Key)
 			if err != nil {
-				return fmt.Errorf("failed to load children for key %x: %w", key, err)
+				return fmt.Errorf("failed to load children for key %x: %w", canonicalKey, err)
 			}
 
 			// Load all slices
@@ -431,7 +445,7 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			// Decode data
 			decodedData, err := k.decodeDataPipeline(kvDataLinked)
 			if err != nil {
-				return fmt.Errorf("failed to decode data for key %x: %w", key, err)
+				return fmt.Errorf("failed to decode data for key %x: %w", canonicalKey, err)
 			}
 
 			results = append(results, decodedData)
@@ -454,8 +468,33 @@ func (k *KV) DataExists(key hash.Hash) (bool, error) {
 
 	var exists bool
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
+		if resolved, found, err := k.resolveAliasTxn(txn, key); err != nil {
+			return err
+		} else if found {
+			metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, resolved)
+			_, err := txn.Get([]byte(metadataKey))
+			if err != nil {
+				if err == badger.ErrKeyNotFound {
+					exists = false
+					return nil
+				}
+				return err
+			}
+			exists = true
+			return nil
+		}
+
+		count, err := k.getRefCountTxn(txn, key)
+		if err != nil {
+			return err
+		}
+		if count > 0 {
+			exists = false
+			return nil
+		}
+
 		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
-		_, err := txn.Get([]byte(metadataKey))
+		_, err = txn.Get([]byte(metadataKey))
 		if err != nil {
 			if err == badger.ErrKeyNotFound {
 				exists = false
