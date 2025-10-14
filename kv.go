@@ -119,5 +119,6 @@ func Init(crypt *crypt.Crypt, config *Config) (*KV, error) {
 
 // Close closes the BadgerDB instance
 func (k *KV) Close() error {
+	k.badgerDB.RunValueLogGC(0.9) // Attempt to run value log GC before closing
 	return k.badgerDB.Close()
 }
