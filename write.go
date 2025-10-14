@@ -37,6 +37,13 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 
 	data.Key = computeDataKey(data) // Calculate the key hash from all relevant fields
 
+	existingRefCount, err := k.getRefCount(data.Key)
+	if err != nil {
+		return hash.Hash{}, fmt.Errorf("failed to load reference count for key %x: %w", data.Key, err)
+	}
+
+	aliasKey := generateAliasKey(data.Key, existingRefCount)
+
 	// Use the encoding pipeline to process the data
 	encoded, err := k.encodeDataPipeline(data)
 	if err != nil {
@@ -84,6 +91,15 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 
 	if err := k.storeMetadataChunkHashesWithBatch(wb, metadata.Key, metadata.MetaChunkHashes); err != nil {
 		return hash.Hash{}, fmt.Errorf("failed to store metadata chunk hashes: %w", err)
+	}
+
+	newRefCount := existingRefCount + 1
+	if err := wb.Set(refCountKeyBytes(metadata.Key), encodeRefCount(newRefCount)); err != nil {
+		return hash.Hash{}, fmt.Errorf("failed to update reference count for key %x: %w", metadata.Key, err)
+	}
+
+	if err := k.storeAliasWithBatch(wb, aliasKey, metadata.Key); err != nil {
+		return hash.Hash{}, fmt.Errorf("failed to store alias for key %x: %w", aliasKey, err)
 	}
 
 	// Store parent-child relationships
@@ -134,7 +150,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 	}
 
 	log.Debug("Successfully wrote data", "key", fmt.Sprintf("%x", data.Key))
-	return data.Key, nil
+	return aliasKey, nil
 }
 
 // storeMetadata serializes and stores KvDataHash metadata
@@ -384,7 +400,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 		allMetadata      []kvDataHash
 		allSlices        []SliceRecord
 		metadataChildren [][]hash.Hash
-		keys             []hash.Hash
+		canonicalKeys    []hash.Hash
 	)
 
 	for _, data := range dataList {
@@ -403,7 +419,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode data with key %x: %w", data.Key, err)
 		}
-		keys = append(keys, data.Key)
+		canonicalKeys = append(canonicalKeys, data.Key)
 
 		// Create metadata
 		contentHashes := make([]hash.Hash, 0, len(encoded.Slices))
@@ -438,8 +454,23 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 		metadataChildren = append(metadataChildren, encoded.Children)
 	}
 
+	refCounts, err := k.getRefCounts(canonicalKeys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load reference counts: %w", err)
+	}
+
+	aliasMappings := make([]aliasMapping, 0, len(canonicalKeys))
+	keys := make([]hash.Hash, len(canonicalKeys))
+	for idx, canonical := range canonicalKeys {
+		current := refCounts[canonical]
+		aliasKey := generateAliasKey(canonical, current)
+		aliasMappings = append(aliasMappings, aliasMapping{Alias: aliasKey, Canonical: canonical})
+		keys[idx] = aliasKey
+		refCounts[canonical] = current + 1
+	}
+
 	// Perform batch write
-	err := k.badgerDB.Update(func(txn *badger.Txn) error {
+	err = k.badgerDB.Update(func(txn *badger.Txn) error {
 		// Store all metadata
 		for idx, metadata := range allMetadata {
 			err := k.storeMetadata(txn, metadata)
@@ -455,6 +486,18 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			err = k.storeParentChildRelationshipsTxn(txn, metadata.Key, metadata.Parent, metadataChildren[idx])
 			if err != nil {
 				return fmt.Errorf("failed to store parent-child relationships for key %x: %w", metadata.Key, err)
+			}
+		}
+
+		for _, mapping := range aliasMappings {
+			if err := k.storeAliasTxn(txn, mapping.Alias, mapping.Canonical); err != nil {
+				return fmt.Errorf("failed to store alias for key %x: %w", mapping.Alias, err)
+			}
+		}
+
+		for canonical, count := range refCounts {
+			if err := txn.Set(refCountKeyBytes(canonical), encodeRefCount(count)); err != nil {
+				return fmt.Errorf("failed to update reference count for key %x: %w", canonical, err)
 			}
 		}
 

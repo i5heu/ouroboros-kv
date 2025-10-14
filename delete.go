@@ -13,10 +13,38 @@ func (k *KV) DeleteData(key hash.Hash) error {
 	atomic.AddUint64(&k.writeCounter, 1)
 
 	err := k.badgerDB.Update(func(txn *badger.Txn) error {
-		// First, load metadata to find all slices that need to be deleted
-		metadata, err := k.loadMetadata(txn, key)
+		canonicalKey := key
+		resolvedKey, aliasFound, err := k.resolveAliasTxn(txn, key)
 		if err != nil {
-			return fmt.Errorf("failed to load metadata for key %x: %w", key, err)
+			return fmt.Errorf("failed to resolve alias for key %x: %w", key, err)
+		}
+		if aliasFound {
+			canonicalKey = resolvedKey
+		}
+
+		refCount, err := k.getRefCountTxn(txn, canonicalKey)
+		if err != nil {
+			return fmt.Errorf("failed to load reference count for key %x: %w", canonicalKey, err)
+		}
+
+		if err := k.deleteAliasTxn(txn, key); err != nil {
+			if err != badger.ErrKeyNotFound {
+				return fmt.Errorf("failed to delete alias for key %x: %w", key, err)
+			}
+		}
+
+		if refCount > 1 {
+			newCount := refCount - 1
+			if err := txn.Set(refCountKeyBytes(canonicalKey), encodeRefCount(newCount)); err != nil {
+				return fmt.Errorf("failed to update reference count for key %x: %w", canonicalKey, err)
+			}
+			return nil
+		}
+
+		// First, load metadata to find all slices that need to be deleted
+		metadata, err := k.loadMetadata(txn, canonicalKey)
+		if err != nil {
+			return fmt.Errorf("failed to load metadata for key %x: %w", canonicalKey, err)
 		}
 
 		// Delete all slices associated with this data
@@ -37,16 +65,26 @@ func (k *KV) DeleteData(key hash.Hash) error {
 		}
 
 		// Delete metadata
-		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
+		metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, canonicalKey)
 		err = txn.Delete([]byte(metadataKey))
 		if err != nil {
-			return fmt.Errorf("failed to delete metadata for key %x: %w", key, err)
+			return fmt.Errorf("failed to delete metadata for key %x: %w", canonicalKey, err)
 		}
 
-		metaChunksKey := fmt.Sprintf("%s%x", META_CHUNK_HASH_PREFIX, key)
+		metaChunksKey := fmt.Sprintf("%s%x", META_CHUNK_HASH_PREFIX, canonicalKey)
 		err = txn.Delete([]byte(metaChunksKey))
 		if err != nil && err != badger.ErrKeyNotFound {
-			return fmt.Errorf("failed to delete metadata chunk hashes for key %x: %w", key, err)
+			return fmt.Errorf("failed to delete metadata chunk hashes for key %x: %w", canonicalKey, err)
+		}
+
+		refKey := refCountKeyBytes(canonicalKey)
+		err = txn.Delete(refKey)
+		if err != nil && err != badger.ErrKeyNotFound {
+			return fmt.Errorf("failed to delete reference count for key %x: %w", canonicalKey, err)
+		}
+
+		if err := k.deleteAliasTxn(txn, canonicalKey); err != nil && err != badger.ErrKeyNotFound {
+			return fmt.Errorf("failed to delete canonical alias for key %x: %w", canonicalKey, err)
 		}
 
 		return nil
