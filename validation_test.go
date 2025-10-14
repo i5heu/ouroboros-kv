@@ -39,11 +39,11 @@ func TestValidateKeyDetectsCorruption(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(metadata.ShardHashes) == 0 {
-			return fmt.Errorf("no shard hashes found for key %x", key)
+		if len(metadata.ChunkHashes) == 0 {
+			return fmt.Errorf("no chunk hashes found for key %x", key)
 		}
-		chunkKey := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, metadata.ShardHashes[0], 0)
-		item, err := txn.Get([]byte(chunkKey))
+		sliceKey := fmt.Sprintf("%s%x_%d", SLICE_PREFIX, metadata.ChunkHashes[0], 0)
+		item, err := txn.Get([]byte(sliceKey))
 		if err != nil {
 			return err
 		}
@@ -54,20 +54,20 @@ func TestValidateKeyDetectsCorruption(t *testing.T) {
 		}); err != nil {
 			return err
 		}
-		chunkProto := &pb.KvDataShardProto{}
-		if err := proto.Unmarshal(protoData, chunkProto); err != nil {
+		sliceProto := &pb.SliceRecordProto{}
+		if err := proto.Unmarshal(protoData, sliceProto); err != nil {
 			return err
 		}
-		if len(chunkProto.ChunkContent) == 0 {
-			chunkProto.ChunkContent = []byte{0xFF}
+		if len(sliceProto.Payload) == 0 {
+			sliceProto.Payload = []byte{0xFF}
 		} else {
-			chunkProto.ChunkContent[0] ^= 0xFF
+			sliceProto.Payload[0] ^= 0xFF
 		}
-		updated, err := proto.Marshal(chunkProto)
+		updated, err := proto.Marshal(sliceProto)
 		if err != nil {
 			return err
 		}
-		return txn.Set([]byte(chunkKey), updated)
+		return txn.Set([]byte(sliceKey), updated)
 	}); err != nil {
 		t.Fatalf("failed to corrupt stored chunk: %v", err)
 	}

@@ -12,84 +12,84 @@ import (
 )
 
 func (k *KV) decodeDataPipeline(kvDataLinked kvDataLinked) (Data, error) {
-	content, rsShards, rsParity, err := k.reconstructPayload(kvDataLinked.Shards, kvDataLinked.ChunkHashes)
+	content, rsData, rsParity, err := k.reconstructPayload(kvDataLinked.Slices, kvDataLinked.ChunkHashes)
 	if err != nil {
 		return Data{}, err
 	}
 
-	metadata, _, _, err := k.reconstructPayload(kvDataLinked.MetaShards, kvDataLinked.MetaChunkHashes)
+	metadata, _, _, err := k.reconstructPayload(kvDataLinked.MetaSlices, kvDataLinked.MetaChunkHashes)
 	if err != nil {
 		return Data{}, err
 	}
 
 	return Data{
-		Key:                     kvDataLinked.Key,
-		MetaData:                metadata,
-		Content:                 content,
-		Parent:                  kvDataLinked.Parent,
-		Children:                kvDataLinked.Children,
-		ReedSolomonShards:       rsShards,
-		ReedSolomonParityShards: rsParity,
-		Created:                 kvDataLinked.Created,
-		Aliases:                 kvDataLinked.Aliases,
+		Key:            kvDataLinked.Key,
+		MetaData:       metadata,
+		Content:        content,
+		Parent:         kvDataLinked.Parent,
+		Children:       kvDataLinked.Children,
+		RSDataSlices:   rsData,
+		RSParitySlices: rsParity,
+		Created:        kvDataLinked.Created,
+		Aliases:        kvDataLinked.Aliases,
 	}, nil
 }
 
-func (k *KV) reedSolomonReconstructor(chunks []kvDataShard) (*encrypt.EncryptResult, error) {
-	if len(chunks) == 0 {
-		return nil, fmt.Errorf("no chunks provided for reconstruction")
+func (k *KV) reedSolomonReconstructor(slices []SliceRecord) (*encrypt.EncryptResult, error) {
+	if len(slices) == 0 {
+		return nil, fmt.Errorf("no slices provided for reconstruction")
 	}
 
-	// All chunks should have the same Reed-Solomon configuration
-	firstChunk := chunks[0]
-	dataShards := int(firstChunk.ReedSolomonShards)
-	parityShards := int(firstChunk.ReedSolomonParityShards)
-	totalShards := dataShards + parityShards
+	// All slices should have the same Reed-Solomon configuration
+	firstSlice := slices[0]
+	dataSlices := int(firstSlice.RSDataSlices)
+	paritySlices := int(firstSlice.RSParitySlices)
+	totalSlices := dataSlices + paritySlices
 
-	if len(chunks) > totalShards {
-		return nil, fmt.Errorf("too many chunks: got %d, expected at most %d", len(chunks), totalShards)
+	if len(slices) > totalSlices {
+		return nil, fmt.Errorf("too many slices: got %d, expected at most %d", len(slices), totalSlices)
 	}
 
 	// Create Reed-Solomon decoder
-	enc, err := reedsolomon.New(dataShards, parityShards)
+	enc, err := reedsolomon.New(dataSlices, paritySlices)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Reed-Solomon decoder: %w", err)
 	}
 
-	// Prepare shards array - initialize with nil slices
-	shards := make([][]byte, totalShards)
+	// Prepare slice matrix - initialize with nil payloads
+	stripeSlices := make([][]byte, totalSlices)
 	var encapsulatedKey []byte
 	var nonce []byte
 
-	// Fill shards with available chunks
-	for _, chunk := range chunks {
-		if int(chunk.ReedSolomonIndex) >= totalShards {
-			return nil, fmt.Errorf("invalid Reed-Solomon index: %d (max %d)", chunk.ReedSolomonIndex, totalShards-1)
+	// Fill slice matrix with available slices
+	for _, slice := range slices {
+		if int(slice.RSSliceIndex) >= totalSlices {
+			return nil, fmt.Errorf("invalid Reed-Solomon index: %d (max %d)", slice.RSSliceIndex, totalSlices-1)
 		}
 
-		shards[chunk.ReedSolomonIndex] = chunk.ChunkContent
+		stripeSlices[slice.RSSliceIndex] = slice.Payload
 
-		// All chunks should have the same encryption metadata
+		// All slices should have the same encryption metadata
 		if encapsulatedKey == nil {
-			encapsulatedKey = chunk.EncapsulatedKey
-			nonce = chunk.Nonce
+			encapsulatedKey = slice.EncapsulatedKey
+			nonce = slice.Nonce
 		}
 	}
 
-	// Try to reconstruct missing shards
-	err = enc.Reconstruct(shards)
+	// Try to reconstruct missing slices
+	err = enc.Reconstruct(stripeSlices)
 	if err != nil {
-		return nil, fmt.Errorf("failed to reconstruct Reed-Solomon shards: %w", err)
+		return nil, fmt.Errorf("failed to reconstruct Reed-Solomon slices: %w", err)
 	}
 
 	// Calculate the total expected data size from the original size stored in chunks
-	originalSize := int(chunks[0].OriginalSize)
+	originalSize := int(slices[0].OriginalSize)
 
 	// Use the Reed-Solomon Join method to properly reconstruct the data
 	var reconstructed bytes.Buffer
-	err = enc.Join(&reconstructed, shards, originalSize)
+	err = enc.Join(&reconstructed, stripeSlices, originalSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to join Reed-Solomon shards: %w", err)
+		return nil, fmt.Errorf("failed to join Reed-Solomon slices: %w", err)
 	}
 
 	return &encrypt.EncryptResult{
@@ -116,8 +116,8 @@ func decompressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (k *KV) reconstructPayload(shards []kvDataShard, hashOrder []hash.Hash) ([]byte, uint8, uint8, error) {
-	if len(shards) == 0 {
+func (k *KV) reconstructPayload(slices []SliceRecord, hashOrder []hash.Hash) ([]byte, uint8, uint8, error) {
+	if len(slices) == 0 {
 		return nil, 0, 0, nil
 	}
 
@@ -125,21 +125,21 @@ func (k *KV) reconstructPayload(shards []kvDataShard, hashOrder []hash.Hash) ([]
 		return nil, 0, 0, fmt.Errorf("hash order missing for payload reconstruction")
 	}
 
-	chunkGroups := make(map[hash.Hash][]kvDataShard)
-	for _, shard := range shards {
-		chunkGroups[shard.ChunkHash] = append(chunkGroups[shard.ChunkHash], shard)
+	sliceGroups := make(map[hash.Hash][]SliceRecord)
+	for _, slice := range slices {
+		sliceGroups[slice.ChunkHash] = append(sliceGroups[slice.ChunkHash], slice)
 	}
 
 	var payload bytes.Buffer
-	var rsShards, rsParity uint8
+	var rsData, rsParity uint8
 
 	for idx, chunkHash := range hashOrder {
-		chunks, ok := chunkGroups[chunkHash]
+		stripeSlices, ok := sliceGroups[chunkHash]
 		if !ok {
-			return nil, 0, 0, fmt.Errorf("missing shard group for hash %x", chunkHash)
+			return nil, 0, 0, fmt.Errorf("missing slice group for hash %x", chunkHash)
 		}
 
-		encryptedChunk, err := k.reedSolomonReconstructor(chunks)
+		encryptedChunk, err := k.reedSolomonReconstructor(stripeSlices)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to reconstruct Reed-Solomon chunk: %w", err)
 		}
@@ -161,11 +161,11 @@ func (k *KV) reconstructPayload(shards []kvDataShard, hashOrder []hash.Hash) ([]
 
 		payload.Write(decompressedChunk)
 
-		if rsShards == 0 && len(chunks) > 0 {
-			rsShards = chunks[0].ReedSolomonShards
-			rsParity = chunks[0].ReedSolomonParityShards
+		if rsData == 0 && len(stripeSlices) > 0 {
+			rsData = stripeSlices[0].RSDataSlices
+			rsParity = stripeSlices[0].RSParitySlices
 		}
 	}
 
-	return payload.Bytes(), rsShards, rsParity, nil
+	return payload.Bytes(), rsData, rsParity, nil
 }

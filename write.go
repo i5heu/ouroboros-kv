@@ -15,11 +15,11 @@ import (
 
 const (
 	// Key prefixes for different data types in BadgerDB
-	METADATA_PREFIX       = "meta:"        // For KvDataHash metadata
-	METADATA_CHUNK_PREFIX = "meta_chunks:" // For metadata shard hashes
-	CHUNK_PREFIX          = "chunk:"       // For KvDataShard data
-	PARENT_PREFIX         = "parent:"      // For parent relationships: parent_key -> child_key
-	CHILD_PREFIX          = "child:"       // For child relationships: child_key -> parent_key
+	METADATA_PREFIX        = "meta:"             // For KvDataHash metadata
+	META_CHUNK_HASH_PREFIX = "meta:chunkhashes:" // For metadata chunk hash ordering
+	SLICE_PREFIX           = "slice:"            // For individual SliceRecord payloads
+	PARENT_PREFIX          = "parent:"           // For parent relationships: parent_key -> child_key
+	CHILD_PREFIX           = "child:"            // For child relationships: child_key -> parent_key
 )
 
 // WriteData encodes and stores the given Data in the key-value store
@@ -43,30 +43,30 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("failed to encode data: %w", err)
 	}
 
-	// Group content shards by chunk hash
-	contentHashes := make([]hash.Hash, 0, len(encoded.Shards))
-	contentShardMap := make(map[hash.Hash][]kvDataShard)
-	for _, shard := range encoded.Shards {
-		if _, exists := contentShardMap[shard.ChunkHash]; !exists {
-			contentHashes = append(contentHashes, shard.ChunkHash)
+	// Group content slices by chunk hash
+	contentHashes := make([]hash.Hash, 0, len(encoded.Slices))
+	contentSliceMap := make(map[hash.Hash][]SliceRecord)
+	for _, slice := range encoded.Slices {
+		if _, exists := contentSliceMap[slice.ChunkHash]; !exists {
+			contentHashes = append(contentHashes, slice.ChunkHash)
 		}
-		contentShardMap[shard.ChunkHash] = append(contentShardMap[shard.ChunkHash], shard)
+		contentSliceMap[slice.ChunkHash] = append(contentSliceMap[slice.ChunkHash], slice)
 	}
 
-	// Group metadata shards by chunk hash
-	metaHashes := make([]hash.Hash, 0, len(encoded.MetaShards))
-	metaShardMap := make(map[hash.Hash][]kvDataShard)
-	for _, shard := range encoded.MetaShards {
-		if _, exists := metaShardMap[shard.ChunkHash]; !exists {
-			metaHashes = append(metaHashes, shard.ChunkHash)
+	// Group metadata slices by chunk hash
+	metaHashes := make([]hash.Hash, 0, len(encoded.MetaSlices))
+	metaSliceMap := make(map[hash.Hash][]SliceRecord)
+	for _, slice := range encoded.MetaSlices {
+		if _, exists := metaSliceMap[slice.ChunkHash]; !exists {
+			metaHashes = append(metaHashes, slice.ChunkHash)
 		}
-		metaShardMap[shard.ChunkHash] = append(metaShardMap[shard.ChunkHash], shard)
+		metaSliceMap[slice.ChunkHash] = append(metaSliceMap[slice.ChunkHash], slice)
 	}
 
 	metadata := kvDataHash{
 		Key:             encoded.Key,
-		ShardHashes:     contentHashes,
-		MetaShardHashes: metaHashes,
+		ChunkHashes:     contentHashes,
+		MetaChunkHashes: metaHashes,
 		Parent:          encoded.Parent,
 		Created:         encoded.Created,
 		Aliases:         encoded.Aliases,
@@ -82,8 +82,8 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("failed to store metadata: %w", err)
 	}
 
-	if err := k.storeMetadataChunkHashesWithBatch(wb, metadata.Key, metadata.MetaShardHashes); err != nil {
-		return hash.Hash{}, fmt.Errorf("failed to store metadata shard hashes: %w", err)
+	if err := k.storeMetadataChunkHashesWithBatch(wb, metadata.Key, metadata.MetaChunkHashes); err != nil {
+		return hash.Hash{}, fmt.Errorf("failed to store metadata chunk hashes: %w", err)
 	}
 
 	// Store parent-child relationships
@@ -92,20 +92,20 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("failed to store parent-child relationships: %w", err)
 	}
 
-	// Store all content chunks
-	for _, chunks := range contentShardMap {
-		for _, chunk := range chunks {
-			if err := k.storeChunkWithBatch(wb, chunk); err != nil {
-				return hash.Hash{}, fmt.Errorf("failed to store chunk: %w", err)
+	// Store all content slices
+	for _, slices := range contentSliceMap {
+		for _, slice := range slices {
+			if err := k.storeSliceWithBatch(wb, slice); err != nil {
+				return hash.Hash{}, fmt.Errorf("failed to store slice: %w", err)
 			}
 		}
 	}
 
-	// Store all metadata chunks
-	for _, chunks := range metaShardMap {
-		for _, chunk := range chunks {
-			if err := k.storeChunkWithBatch(wb, chunk); err != nil {
-				return hash.Hash{}, fmt.Errorf("failed to store metadata chunk: %w", err)
+	// Store all metadata slices
+	for _, slices := range metaSliceMap {
+		for _, slice := range slices {
+			if err := k.storeSliceWithBatch(wb, slice); err != nil {
+				return hash.Hash{}, fmt.Errorf("failed to store metadata slice: %w", err)
 			}
 		}
 	}
@@ -131,7 +131,7 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata kvDataHash) error {
 	}
 
 	// Convert chunk hashes
-	for _, chunkHash := range metadata.ShardHashes {
+	for _, chunkHash := range metadata.ChunkHashes {
 		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
 	}
 
@@ -151,31 +151,31 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata kvDataHash) error {
 	return txn.Set([]byte(key), data)
 }
 
-// storeChunk serializes and stores a KvDataShard
-func (k *KV) storeChunk(txn *badger.Txn, chunk kvDataShard) error {
+// storeSlice serializes and stores a SliceRecord
+func (k *KV) storeSlice(txn *badger.Txn, slice SliceRecord) error {
 	// Convert to protobuf
-	protoChunk := &pb.KvDataShardProto{
-		ChunkHash:               chunk.ChunkHash[:],
-		EncodedHash:             chunk.EncodedHash[:],
-		ReedSolomonShards:       uint32(chunk.ReedSolomonShards),
-		ReedSolomonParityShards: uint32(chunk.ReedSolomonParityShards),
-		ReedSolomonIndex:        uint32(chunk.ReedSolomonIndex),
-		Size:                    chunk.Size,
-		OriginalSize:            chunk.OriginalSize,
-		EncapsulatedKey:         chunk.EncapsulatedKey,
-		Nonce:                   chunk.Nonce,
-		ChunkContent:            chunk.ChunkContent,
+	protoSlice := &pb.SliceRecordProto{
+		ChunkHash:       slice.ChunkHash[:],
+		SealedHash:      slice.SealedHash[:],
+		RsDataSlices:    uint32(slice.RSDataSlices),
+		RsParitySlices:  uint32(slice.RSParitySlices),
+		RsSliceIndex:    uint32(slice.RSSliceIndex),
+		Size:            slice.Size,
+		OriginalSize:    slice.OriginalSize,
+		EncapsulatedKey: slice.EncapsulatedKey,
+		Nonce:           slice.Nonce,
+		Payload:         slice.Payload,
 	}
 
 	// Serialize to protobuf
-	data, err := proto.Marshal(protoChunk)
+	data, err := proto.Marshal(protoSlice)
 	if err != nil {
 		return fmt.Errorf("failed to marshal chunk: %w", err)
 	}
 
 	// Create key with chunk prefix and unique identifier
-	// Use chunk hash + Reed-Solomon index to create unique keys for each shard
-	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
+	// Use chunk hash + Reed-Solomon index to create unique keys for each slice
+	key := fmt.Sprintf("%s%x_%d", SLICE_PREFIX, slice.ChunkHash, slice.RSSliceIndex)
 
 	return txn.Set([]byte(key), data)
 }
@@ -190,7 +190,7 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) 
 	}
 
 	// Convert chunk hashes
-	for _, chunkHash := range metadata.ShardHashes {
+	for _, chunkHash := range metadata.ChunkHashes {
 		protoMetadata.ChunkHashes = append(protoMetadata.ChunkHashes, chunkHash[:])
 	}
 
@@ -211,7 +211,7 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) 
 }
 
 func (k *KV) storeMetadataChunkHashesWithBatch(wb *badger.WriteBatch, key hash.Hash, hashes []hash.Hash) error {
-	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+	metaKey := fmt.Sprintf("%s%x", META_CHUNK_HASH_PREFIX, key)
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -221,7 +221,7 @@ func (k *KV) storeMetadataChunkHashesWithBatch(wb *badger.WriteBatch, key hash.H
 }
 
 func (k *KV) storeMetadataChunkHashesTxn(txn *badger.Txn, key hash.Hash, hashes []hash.Hash) error {
-	metaKey := fmt.Sprintf("%s%x", METADATA_CHUNK_PREFIX, key)
+	metaKey := fmt.Sprintf("%s%x", META_CHUNK_HASH_PREFIX, key)
 	if len(hashes) == 0 {
 		return nil
 	}
@@ -230,31 +230,31 @@ func (k *KV) storeMetadataChunkHashesTxn(txn *badger.Txn, key hash.Hash, hashes 
 	return txn.Set([]byte(metaKey), payload)
 }
 
-// storeChunkWithBatch serializes and stores a KvDataShard using WriteBatch
-func (k *KV) storeChunkWithBatch(wb *badger.WriteBatch, chunk kvDataShard) error {
+// storeSliceWithBatch serializes and stores a SliceRecord using WriteBatch
+func (k *KV) storeSliceWithBatch(wb *badger.WriteBatch, slice SliceRecord) error {
 	// Convert to protobuf
-	protoChunk := &pb.KvDataShardProto{
-		ChunkHash:               chunk.ChunkHash[:],
-		EncodedHash:             chunk.EncodedHash[:],
-		ReedSolomonShards:       uint32(chunk.ReedSolomonShards),
-		ReedSolomonParityShards: uint32(chunk.ReedSolomonParityShards),
-		ReedSolomonIndex:        uint32(chunk.ReedSolomonIndex),
-		Size:                    chunk.Size,
-		OriginalSize:            chunk.OriginalSize,
-		EncapsulatedKey:         chunk.EncapsulatedKey,
-		Nonce:                   chunk.Nonce,
-		ChunkContent:            chunk.ChunkContent,
+	protoSlice := &pb.SliceRecordProto{
+		ChunkHash:       slice.ChunkHash[:],
+		SealedHash:      slice.SealedHash[:],
+		RsDataSlices:    uint32(slice.RSDataSlices),
+		RsParitySlices:  uint32(slice.RSParitySlices),
+		RsSliceIndex:    uint32(slice.RSSliceIndex),
+		Size:            slice.Size,
+		OriginalSize:    slice.OriginalSize,
+		EncapsulatedKey: slice.EncapsulatedKey,
+		Nonce:           slice.Nonce,
+		Payload:         slice.Payload,
 	}
 
 	// Serialize to protobuf
-	data, err := proto.Marshal(protoChunk)
+	data, err := proto.Marshal(protoSlice)
 	if err != nil {
 		return fmt.Errorf("failed to marshal chunk: %w", err)
 	}
 
 	// Create key with chunk prefix and unique identifier
-	// Use chunk hash + Reed-Solomon index to create unique keys for each shard
-	key := fmt.Sprintf("%s%x_%d", CHUNK_PREFIX, chunk.ChunkHash, chunk.ReedSolomonIndex)
+	// Use chunk hash + Reed-Solomon index to create unique keys for each slice
+	key := fmt.Sprintf("%s%x_%d", SLICE_PREFIX, slice.ChunkHash, slice.RSSliceIndex)
 
 	return wb.Set([]byte(key), data)
 }
@@ -311,8 +311,8 @@ func canonicalDataKeyPayload(data Data) []byte {
 	writeBytesWithLength(&buf, data.MetaData)
 	writeBytesWithLength(&buf, data.Content)
 	buf.Write(data.Parent[:])
-	buf.WriteByte(data.ReedSolomonShards)
-	buf.WriteByte(data.ReedSolomonParityShards)
+	buf.WriteByte(data.RSDataSlices)
+	buf.WriteByte(data.RSParitySlices)
 
 	var createdBytes [8]byte
 	binary.BigEndian.PutUint64(createdBytes[:], uint64(data.Created))
@@ -348,7 +348,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 	// Process all data through encoding pipeline first
 	var (
 		allMetadata      []kvDataHash
-		allChunks        []kvDataShard
+		allSlices        []SliceRecord
 		metadataChildren [][]hash.Hash
 		keys             []hash.Hash
 	)
@@ -372,30 +372,30 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 		keys = append(keys, data.Key)
 
 		// Create metadata
-		contentHashes := make([]hash.Hash, 0, len(encoded.Shards))
+		contentHashes := make([]hash.Hash, 0, len(encoded.Slices))
 		contentSeen := make(map[hash.Hash]bool)
-		for _, chunk := range encoded.Shards {
-			if !contentSeen[chunk.ChunkHash] {
-				contentHashes = append(contentHashes, chunk.ChunkHash)
-				contentSeen[chunk.ChunkHash] = true
+		for _, slice := range encoded.Slices {
+			if !contentSeen[slice.ChunkHash] {
+				contentHashes = append(contentHashes, slice.ChunkHash)
+				contentSeen[slice.ChunkHash] = true
 			}
-			allChunks = append(allChunks, chunk)
+			allSlices = append(allSlices, slice)
 		}
 
-		metaHashes := make([]hash.Hash, 0, len(encoded.MetaShards))
+		metaHashes := make([]hash.Hash, 0, len(encoded.MetaSlices))
 		metaSeen := make(map[hash.Hash]bool)
-		for _, chunk := range encoded.MetaShards {
-			if !metaSeen[chunk.ChunkHash] {
-				metaHashes = append(metaHashes, chunk.ChunkHash)
-				metaSeen[chunk.ChunkHash] = true
+		for _, slice := range encoded.MetaSlices {
+			if !metaSeen[slice.ChunkHash] {
+				metaHashes = append(metaHashes, slice.ChunkHash)
+				metaSeen[slice.ChunkHash] = true
 			}
-			allChunks = append(allChunks, chunk)
+			allSlices = append(allSlices, slice)
 		}
 
 		metadata := kvDataHash{
 			Key:             encoded.Key,
-			ShardHashes:     contentHashes,
-			MetaShardHashes: metaHashes,
+			ChunkHashes:     contentHashes,
+			MetaChunkHashes: metaHashes,
 			Parent:          encoded.Parent,
 			Created:         encoded.Created,
 			Aliases:         encoded.Aliases,
@@ -413,8 +413,8 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 				return fmt.Errorf("failed to store metadata for key %x: %w", metadata.Key, err)
 			}
 
-			if err := k.storeMetadataChunkHashesTxn(txn, metadata.Key, metadata.MetaShardHashes); err != nil {
-				return fmt.Errorf("failed to store metadata shard hashes for key %x: %w", metadata.Key, err)
+			if err := k.storeMetadataChunkHashesTxn(txn, metadata.Key, metadata.MetaChunkHashes); err != nil {
+				return fmt.Errorf("failed to store metadata chunk hashes for key %x: %w", metadata.Key, err)
 			}
 
 			// Store parent-child relationships
@@ -424,11 +424,11 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			}
 		}
 
-		// Store all chunks
-		for _, chunk := range allChunks {
-			err := k.storeChunk(txn, chunk)
+		// Store all slices
+		for _, slice := range allSlices {
+			err := k.storeSlice(txn, slice)
 			if err != nil {
-				return fmt.Errorf("failed to store chunk %x: %w", chunk.ChunkHash, err)
+				return fmt.Errorf("failed to store slice for hash %x: %w", slice.ChunkHash, err)
 			}
 		}
 

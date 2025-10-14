@@ -7,22 +7,22 @@ option go_package = "github.com/i5heu/ouroboros-kv";
 // KvDataHashProto represents the metadata for stored data with chunk hashes
 message KvDataHashProto {
   bytes key = 1;                    // Key of the content (hash.Hash as bytes)
-  repeated bytes chunk_hashes = 2;  // Hashes of KvDataShards
+  repeated bytes chunk_hashes = 2;  // Hashes of chunk payloads
   bytes parent = 3;                 // Key of the parent chunk
   int64 created = 4;                // Unix timestamp when the data was created
   repeated bytes aliases = 5;       // Aliases for the data
 }
 
-// KvDataShardProto represents a chunk of content that will be stored in the key-value store
-message KvDataShardProto {
-  bytes chunk_hash = 1;                 // After chunking and before compression, encryption and erasure coding
-  bytes encoded_hash = 2;               // After compression, encryption and erasure, including all the metadata
-  uint32 reed_solomon_shards = 3;       // Number of shards in Reed-Solomon coding
-  uint32 reed_solomon_parity_shards = 4; // Number of parity shards in Reed-Solomon coding
-  uint32 reed_solomon_index = 5;        // Index of the chunk in the Reed-Solomon coding
-  uint64 size = 6;                      // Size of the shard in bytes
-  uint64 original_size = 7;             // Size of the original encrypted chunk before Reed-Solomon encoding
-  bytes encapsulated_key = 8;           // ML-KEM encapsulated secret for the chunk
-  bytes nonce = 9;                      // AES-GCM nonce for encryption
-  bytes chunk_content = 10;             // Content of the chunk after compression, encryption and erasure coding
+// SliceRecordProto represents a single Reed-Solomon slice persisted in the key-value store
+message SliceRecordProto {
+  bytes chunk_hash = 1;                   // Hash of the clear chunk
+  bytes sealed_hash = 2;                  // Hash of the sealed chunk prior to RS encoding
+  uint32 rs_data_slices = 3;              // Number of data slices in the originating stripe
+  uint32 rs_parity_slices = 4;            // Number of parity slices in the originating stripe
+  uint32 rs_slice_index = 5;              // Index of the slice within the stripe
+  uint64 size = 6;                        // Size of the slice payload
+  uint64 original_size = 7;               // Size of the sealed chunk before RS split
+  bytes encapsulated_key = 8;             // ML-KEM encapsulated secret for the sealed chunk
+  bytes nonce = 9;                        // AES-GCM nonce for encryption
+  bytes payload = 10;                     // Slice payload after RS encoding
 }

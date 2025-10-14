@@ -48,12 +48,12 @@ func setupTestKV(t *testing.T) (*KV, func()) {
 // createTestData creates test data for encryption pipeline tests
 func createTestData() Data {
 	data := applyTestDefaults(Data{
-		MetaData:                []byte("Test metadata"),
-		Content:                 []byte("This is test content for the encryption pipeline. It should be long enough to test chunking functionality."),
-		Parent:                  hash.HashString("parent-key"),
-		Children:                []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("Test metadata"),
+		Content:        []byte("This is test content for the encryption pipeline. It should be long enough to test chunking functionality."),
+		Parent:         hash.HashString("parent-key"),
+		Children:       []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 	data.Key = expectedKeyForData(data)
 	return data
@@ -92,25 +92,25 @@ func TestEncodeDataPipeline(t *testing.T) {
 	}
 
 	// Verify chunks were created
-	if len(result.Shards) == 0 {
-		t.Error("Expected content shards to be created, but got none")
+	if len(result.Slices) == 0 {
+		t.Error("Expected content slices to be created, but got none")
 	}
 
-	if len(result.MetaShards) == 0 {
-		t.Error("Expected metadata shards to be created, but got none")
+	if len(result.MetaSlices) == 0 {
+		t.Error("Expected metadata slices to be created, but got none")
 	}
 
 	// Verify Reed-Solomon settings
-	totalShards := testData.ReedSolomonShards + testData.ReedSolomonParityShards
-	for i, chunk := range result.Shards {
-		if chunk.ReedSolomonShards != testData.ReedSolomonShards {
-			t.Errorf("Chunk %d: expected %d Reed-Solomon shards, got %d", i, testData.ReedSolomonShards, chunk.ReedSolomonShards)
+	totalSlices := testData.RSDataSlices + testData.RSParitySlices
+	for i, chunk := range result.Slices {
+		if chunk.RSDataSlices != testData.RSDataSlices {
+			t.Errorf("Chunk %d: expected %d Reed-Solomon slices, got %d", i, testData.RSDataSlices, chunk.RSDataSlices)
 		}
-		if chunk.ReedSolomonParityShards != testData.ReedSolomonParityShards {
-			t.Errorf("Chunk %d: expected %d Reed-Solomon parity shards, got %d", i, testData.ReedSolomonParityShards, chunk.ReedSolomonParityShards)
+		if chunk.RSParitySlices != testData.RSParitySlices {
+			t.Errorf("Chunk %d: expected %d Reed-Solomon parity slices, got %d", i, testData.RSParitySlices, chunk.RSParitySlices)
 		}
-		if chunk.ReedSolomonIndex >= totalShards {
-			t.Errorf("Chunk %d: Reed-Solomon index %d is out of range (max %d)", i, chunk.ReedSolomonIndex, totalShards-1)
+		if chunk.RSSliceIndex >= totalSlices {
+			t.Errorf("Chunk %d: Reed-Solomon index %d is out of range (max %d)", i, chunk.RSSliceIndex, totalSlices-1)
 		}
 	}
 }
@@ -127,12 +127,12 @@ func TestEncodeDataPipelineEmptyContent(t *testing.T) {
 		t.Fatalf("encodeDataPipeline with empty content failed: %v", err)
 	}
 
-	if len(result.Shards) != 0 {
-		t.Errorf("Expected no content shards, got %d", len(result.Shards))
+	if len(result.Slices) != 0 {
+		t.Errorf("Expected no content slices, got %d", len(result.Slices))
 	}
 
-	if len(result.MetaShards) == 0 {
-		t.Error("Expected metadata shards to be created")
+	if len(result.MetaSlices) == 0 {
+		t.Error("Expected metadata slices to be created")
 	}
 
 	decoded, err := kv.decodeDataPipeline(result)
@@ -239,14 +239,14 @@ func TestReedSolomonSplitter(t *testing.T) {
 	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	chunks, err := kv.reedSolomonSplitter(testData, encryptedChunks, chunkHashes)
+	chunks, err := kv.splitIntoRSSlices(testData, encryptedChunks, chunkHashes)
 	if err != nil {
-		t.Fatalf("reedSolomonSplitter failed: %v", err)
+		t.Fatalf("splitIntoRSSlices failed: %v", err)
 	}
 
-	expectedTotalShards := int(testData.ReedSolomonShards + testData.ReedSolomonParityShards)
-	if len(chunks) != expectedTotalShards {
-		t.Errorf("Expected %d chunks, got %d", expectedTotalShards, len(chunks))
+	expectedTotalSlices := int(testData.RSDataSlices + testData.RSParitySlices)
+	if len(chunks) != expectedTotalSlices {
+		t.Errorf("Expected %d chunks, got %d", expectedTotalSlices, len(chunks))
 	}
 
 	// Verify chunk properties
@@ -254,16 +254,16 @@ func TestReedSolomonSplitter(t *testing.T) {
 		if chunk.ChunkHash != chunkHashes[0] {
 			t.Errorf("Chunk %d: wrong chunk hash", i)
 		}
-		if chunk.ReedSolomonShards != testData.ReedSolomonShards {
-			t.Errorf("Chunk %d: wrong Reed-Solomon shards count", i)
+		if chunk.RSDataSlices != testData.RSDataSlices {
+			t.Errorf("Chunk %d: wrong Reed-Solomon slices count", i)
 		}
-		if chunk.ReedSolomonParityShards != testData.ReedSolomonParityShards {
-			t.Errorf("Chunk %d: wrong Reed-Solomon parity shards count", i)
+		if chunk.RSParitySlices != testData.RSParitySlices {
+			t.Errorf("Chunk %d: wrong Reed-Solomon parity slices count", i)
 		}
-		if chunk.ReedSolomonIndex != uint8(i) {
-			t.Errorf("Chunk %d: expected index %d, got %d", i, i, chunk.ReedSolomonIndex)
+		if chunk.RSSliceIndex != uint8(i) {
+			t.Errorf("Chunk %d: expected index %d, got %d", i, i, chunk.RSSliceIndex)
 		}
-		if len(chunk.ChunkContent) == 0 {
+		if len(chunk.Payload) == 0 {
 			t.Errorf("Chunk %d: empty content", i)
 		}
 		if len(chunk.EncapsulatedKey) == 0 {
@@ -275,13 +275,13 @@ func TestReedSolomonSplitter(t *testing.T) {
 	}
 }
 
-func TestReedSolomonSplitterInvalidShardConfig(t *testing.T) {
+func TestReedSolomonSplitterInvalidSliceConfig(t *testing.T) {
 	kv, cleanup := setupTestKV(t)
 	defer cleanup()
 
 	testData := createTestData()
-	testData.ReedSolomonShards = 0 // Invalid configuration
-	testData.ReedSolomonParityShards = 1
+	testData.RSDataSlices = 0 // Invalid configuration
+	testData.RSParitySlices = 1
 
 	testContent := []byte("test content")
 	encryptedChunk, err := kv.crypt.Encrypt(testContent)
@@ -292,7 +292,7 @@ func TestReedSolomonSplitterInvalidShardConfig(t *testing.T) {
 	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	_, err = kv.reedSolomonSplitter(testData, encryptedChunks, chunkHashes)
+	_, err = kv.splitIntoRSSlices(testData, encryptedChunks, chunkHashes)
 	if err == nil {
 		t.Error("Expected error for invalid Reed-Solomon configuration, but got none")
 	}
@@ -320,13 +320,13 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 			}
 
 			testData := Data{
-				Key:                     hash.HashString("test-key-" + tc.name),
-				MetaData:                []byte("metadata-" + tc.name),
-				Content:                 content,
-				Parent:                  hash.HashString("parent"),
-				Children:                []hash.Hash{},
-				ReedSolomonShards:       2,
-				ReedSolomonParityShards: 1,
+				Key:            hash.HashString("test-key-" + tc.name),
+				MetaData:       []byte("metadata-" + tc.name),
+				Content:        content,
+				Parent:         hash.HashString("parent"),
+				Children:       []hash.Hash{},
+				RSDataSlices:   2,
+				RSParitySlices: 1,
 			}
 
 			result, err := kv.encodeDataPipeline(testData)
@@ -335,25 +335,25 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 			}
 
 			// Verify result structure
-			if len(result.Shards) == 0 {
+			if len(result.Slices) == 0 {
 				t.Errorf("No chunks created for %s", tc.name)
 			}
 
-			if len(result.MetaShards) == 0 {
-				t.Errorf("No metadata shards created for %s", tc.name)
+			if len(result.MetaSlices) == 0 {
+				t.Errorf("No metadata slices created for %s", tc.name)
 			}
 
 			// Verify all chunks have consistent Reed-Solomon settings
-			expectedTotal := testData.ReedSolomonShards + testData.ReedSolomonParityShards
-			chunksByGroup := make(map[hash.Hash][]kvDataShard)
+			expectedTotal := testData.RSDataSlices + testData.RSParitySlices
+			chunksByGroup := make(map[hash.Hash][]SliceRecord)
 
-			for _, chunk := range result.Shards {
+			for _, chunk := range result.Slices {
 				chunksByGroup[chunk.ChunkHash] = append(chunksByGroup[chunk.ChunkHash], chunk)
 			}
 
 			for chunkHash, chunks := range chunksByGroup {
 				if len(chunks) != int(expectedTotal) {
-					t.Errorf("Chunk group %v: expected %d shards, got %d", chunkHash, expectedTotal, len(chunks))
+					t.Errorf("Chunk group %v: expected %d slices, got %d", chunkHash, expectedTotal, len(chunks))
 				}
 			}
 

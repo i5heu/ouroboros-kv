@@ -50,31 +50,31 @@ func TestParentChildRelationships(t *testing.T) {
 
 	// Create test data with relationships
 	parentData := applyTestDefaults(Data{
-		MetaData:                []byte("parent metadata"),
-		Content:                 []byte("I am the parent"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("parent metadata"),
+		Content:        []byte("I am the parent"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 
 	child1Data := applyTestDefaults(Data{
-		MetaData:                []byte("child1 metadata"),
-		Content:                 []byte("I am child 1"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("child1 metadata"),
+		Content:        []byte("I am child 1"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 
 	child2Data := applyTestDefaults(Data{
-		MetaData:                []byte("child2 metadata"),
-		Content:                 []byte("I am child 2"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("child2 metadata"),
+		Content:        []byte("I am child 2"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 
 	grandchildData := applyTestDefaults(Data{
-		MetaData:                []byte("grandchild metadata"),
-		Content:                 []byte("I am a grandchild"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("grandchild metadata"),
+		Content:        []byte("I am a grandchild"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 
 	// Store the parent first
@@ -183,28 +183,28 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 
 	// Create test data
 	parentData := applyTestDefaults(Data{
-		MetaData:                []byte("batch parent metadata"),
-		Content:                 []byte("Batch parent"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("batch parent metadata"),
+		Content:        []byte("Batch parent"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 
 	parentKey := expectedKeyForData(parentData)
 
 	child1Data := applyTestDefaults(Data{
-		MetaData:                []byte("batch child1 metadata"),
-		Content:                 []byte("Batch child 1"),
-		Parent:                  parentKey,
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("batch child1 metadata"),
+		Content:        []byte("Batch child 1"),
+		Parent:         parentKey,
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 
 	child2Data := applyTestDefaults(Data{
-		MetaData:                []byte("batch child2 metadata"),
-		Content:                 []byte("Batch child 2"),
-		Parent:                  parentKey,
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("batch child2 metadata"),
+		Content:        []byte("Batch child 2"),
+		Parent:         parentKey,
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 
 	// Batch write all data
@@ -240,26 +240,26 @@ func TestListRootKeys(t *testing.T) {
 	defer cleanup()
 
 	root1Data := applyTestDefaults(Data{
-		Content:                 []byte("Root 1"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("Root 1"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 	root1Key, err := kv.WriteData(root1Data)
 	require.NoError(t, err)
 
 	root2Data := applyTestDefaults(Data{
-		Content:                 []byte("Root 2"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("Root 2"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 	root2Key, err := kv.WriteData(root2Data)
 	require.NoError(t, err)
 
 	childData := applyTestDefaults(Data{
-		Content:                 []byte("Child of root 1"),
-		Parent:                  root1Key,
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("Child of root 1"),
+		Parent:         root1Key,
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 	_, err = kv.WriteData(childData)
 	require.NoError(t, err)

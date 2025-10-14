@@ -34,29 +34,29 @@ func TestComprehensiveRelationships(t *testing.T) {
 
 	// Store some test data with relationships
 	grandparentData := Data{
-		Content:                 []byte("I am the grandparent"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("I am the grandparent"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	}
 	parentData := Data{
-		Content:                 []byte("I am the parent"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("I am the parent"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	}
 	child1Data := Data{
-		Content:                 []byte("I am child 1"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("I am child 1"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	}
 	child2Data := Data{
-		Content:                 []byte("I am child 2"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("I am child 2"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	}
 	grandchild1Data := Data{
-		Content:                 []byte("I am grandchild 1"),
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		Content:        []byte("I am grandchild 1"),
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	}
 
 	// Store grandparent first

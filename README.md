@@ -66,8 +66,8 @@ func main() {
     // Store data (key will be generated from content)
     data := ouroboroskv.Data{
         Content:                 []byte("Hello, World!"),
-        ReedSolomonShards:       3,
-        ReedSolomonParityShards: 2,
+        RSDataSlices:       3,
+        RSParitySlices: 2,
     }
 
     key, err := kv.WriteData(data)
@@ -123,12 +123,12 @@ The data undergoes a processing pipeline during storage, with the reverse proces
 The system uses BadgerDB as the underlying storage engine with a two-tier key-value structure:
 
 - **Metadata Layer**: Stores `kvDataHash` structures containing chunk references and relationships
-- **Data Shards Layer**: Stores individual `kvDataShard` structures with processed content
+- **Slice Records Layer**: Stores individual `SliceRecord` structures with processed content
 
 #### Key Prefixes
 
 - `meta:` - Metadata entries containing chunk hashes and relationships
-- `chunk:` - Individual data shards after processing pipeline
+- `slice:` - Individual RS slices after processing pipeline
 - `parent:` - Parent-to-child relationship mappings
 - `child:` - Child-to-parent relationship mappings
 
@@ -142,15 +142,15 @@ type Data struct {
     Content                 []byte      // Raw data content
     Parent                  hash.Hash   // Parent entry key
     Children                []hash.Hash // Child entry keys
-    ReedSolomonShards       uint8       // Number of data shards
-    ReedSolomonParityShards uint8       // Number of parity shards
+    RSDataSlices       uint8       // Number of data slices
+    RSParitySlices uint8       // Number of parity slices
 }
 ```
 
 #### Internal Storage Types
 
-- `kvDataHash`: Metadata structure linking to data shards
-- `kvDataShard`: Individual processed data chunks with encryption and encoding metadata
+- `kvDataHash`: Metadata structure linking to chunk hashes and slice records
+- `SliceRecord`: Individual processed data slices with encryption and encoding metadata
 
 ### Hierarchical Relationships
 

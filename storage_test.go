@@ -49,12 +49,12 @@ func createTestStorageData() Data {
 	content := []byte("This is test content for storage and retrieval testing. It should be long enough to test the full pipeline.")
 
 	return applyTestDefaults(Data{
-		MetaData:                []byte("storage metadata"),
-		Content:                 content,
-		Parent:                  hash.HashString("parent-storage-key"),
-		Children:                []hash.Hash{hash.HashString("child1-storage"), hash.HashString("child2-storage")},
-		ReedSolomonShards:       3,
-		ReedSolomonParityShards: 2,
+		MetaData:       []byte("storage metadata"),
+		Content:        content,
+		Parent:         hash.HashString("parent-storage-key"),
+		Children:       []hash.Hash{hash.HashString("child1-storage"), hash.HashString("child2-storage")},
+		RSDataSlices:   3,
+		RSParitySlices: 2,
 	})
 }
 
@@ -137,7 +137,7 @@ func TestWriteReadRoundTrip(t *testing.T) {
 	testCases := []struct {
 		name        string
 		contentSize int
-		shards      uint8
+		slices      uint8
 		parity      uint8
 	}{
 		{"tiny", 10, 2, 1},
@@ -155,12 +155,12 @@ func TestWriteReadRoundTrip(t *testing.T) {
 			}
 
 			originalData := applyTestDefaults(Data{
-				MetaData:                []byte("meta-" + tc.name),
-				Content:                 content,
-				Parent:                  hash.HashString("parent"),
-				Children:                []hash.Hash{hash.HashString("child1")},
-				ReedSolomonShards:       tc.shards,
-				ReedSolomonParityShards: tc.parity,
+				MetaData:       []byte("meta-" + tc.name),
+				Content:        content,
+				Parent:         hash.HashString("parent"),
+				Children:       []hash.Hash{hash.HashString("child1")},
+				RSDataSlices:   tc.slices,
+				RSParitySlices: tc.parity,
 			})
 
 			// Write
@@ -258,11 +258,11 @@ func TestBatchWriteData(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		content := []byte("Batch test content " + string(rune('0'+i)))
 		data := applyTestDefaults(Data{
-			Content:                 content,
-			Parent:                  hash.HashString("batch-parent"),
-			Children:                []hash.Hash{},
-			ReedSolomonShards:       2,
-			ReedSolomonParityShards: 1,
+			Content:        content,
+			Parent:         hash.HashString("batch-parent"),
+			Children:       []hash.Hash{},
+			RSDataSlices:   2,
+			RSParitySlices: 1,
 		})
 		dataList = append(dataList, data)
 		expectedKeys = append(expectedKeys, expectedKeyForData(data))
@@ -303,11 +303,11 @@ func TestBatchReadData(t *testing.T) {
 	var keys []hash.Hash
 	for i := 0; i < 3; i++ {
 		data := applyTestDefaults(Data{
-			Content:                 []byte("Batch read test content " + string(rune('0'+i))),
-			Parent:                  hash.HashString("batch-read-parent"),
-			Children:                []hash.Hash{},
-			ReedSolomonShards:       2,
-			ReedSolomonParityShards: 1,
+			Content:        []byte("Batch read test content " + string(rune('0'+i))),
+			Parent:         hash.HashString("batch-read-parent"),
+			Children:       []hash.Hash{},
+			RSDataSlices:   2,
+			RSParitySlices: 1,
 		})
 		originalDataList = append(originalDataList, data)
 
@@ -355,9 +355,9 @@ func TestListKeys(t *testing.T) {
 	var originalKeys []hash.Hash
 	for i := 0; i < 3; i++ {
 		data := Data{
-			Content:                 []byte("List test content " + string(rune('0'+i))),
-			ReedSolomonShards:       2,
-			ReedSolomonParityShards: 1,
+			Content:        []byte("List test content " + string(rune('0'+i))),
+			RSDataSlices:   2,
+			RSParitySlices: 1,
 		}
 
 		key, err := kv.WriteData(data)
@@ -397,11 +397,11 @@ func TestWriteDataEmptyContent(t *testing.T) {
 
 	// Test data with empty content
 	testData := applyTestDefaults(Data{
-		Content:                 []byte{},
-		Parent:                  hash.HashString("parent"),
-		Children:                []hash.Hash{},
-		ReedSolomonShards:       2,
-		ReedSolomonParityShards: 1,
+		Content:        []byte{},
+		Parent:         hash.HashString("parent"),
+		Children:       []hash.Hash{},
+		RSDataSlices:   2,
+		RSParitySlices: 1,
 	})
 
 	// Write empty content

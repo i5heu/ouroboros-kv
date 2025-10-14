@@ -23,22 +23,22 @@ type KV struct {
 
 // Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
 type Data struct {
-	Key                     hash.Hash   // Key is derived from all fields except Children; must be zero when writing new data because it is generated from the content
-	MetaData                []byte      // Additional metadata associated with the data (stored securely but not part of the key)
-	Content                 []byte      // The actual content of the data
-	Parent                  hash.Hash   // Key of the parent value
-	Children                []hash.Hash // Keys of the child values (stored dynamically outside of metadata)
-	ReedSolomonShards       uint8       // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	ReedSolomonParityShards uint8       // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of the shards)
-	Created                 int64       // Unix timestamp when the data was created
-	Aliases                 []hash.Hash // Aliases for the data
+	Key            hash.Hash   // Key is derived from all fields except Children; must be zero when writing new data because it is generated from the content
+	MetaData       []byte      // Additional metadata associated with the data (stored securely but not part of the key)
+	Content        []byte      // The actual content of the data
+	Parent         hash.Hash   // Key of the parent value
+	Children       []hash.Hash // Keys of the child values (stored dynamically outside of metadata)
+	RSDataSlices   uint8       // Number of Reed-Solomon data slices per stripe (RSDataSlices + RSParitySlices = total slices)
+	RSParitySlices uint8       // Number of Reed-Solomon parity slices per stripe (RSDataSlices + RSParitySlices = total slices)
+	Created        int64       // Unix timestamp when the data was created
+	Aliases        []hash.Hash // Aliases for the data
 }
 
 // KvData represents a key-value data structure with hierarchical relationships.
 type kvDataHash struct {
 	Key             hash.Hash
-	ShardHashes     []hash.Hash // Hash of KvDataShards
-	MetaShardHashes []hash.Hash // Hash of metadata KvDataShards
+	ChunkHashes     []hash.Hash // Hash of deduplicated chunks
+	MetaChunkHashes []hash.Hash // Hash of metadata chunks
 	Parent          hash.Hash   // Key of the parent chunk
 	Created         int64       // Unix timestamp when the data was created
 	Aliases         []hash.Hash // Aliases for the data
@@ -46,9 +46,9 @@ type kvDataHash struct {
 
 type kvDataLinked struct {
 	Key             hash.Hash
-	Shards          []kvDataShard // Content shards
+	Slices          []SliceRecord // Content RSSlices
 	ChunkHashes     []hash.Hash   // Order of content chunk hashes
-	MetaShards      []kvDataShard // Metadata shards
+	MetaSlices      []SliceRecord // Metadata RSSlices
 	MetaChunkHashes []hash.Hash   // Order of metadata chunk hashes
 	Parent          hash.Hash     // Key of the parent chunk
 	Children        []hash.Hash   // Keys of the child chunks
@@ -56,18 +56,18 @@ type kvDataLinked struct {
 	Aliases         []hash.Hash   // Aliases for the data
 }
 
-// kvDataShard represents a chunk of content that will be stored in the key-value store.
-type kvDataShard struct {
-	ChunkHash               hash.Hash // After chunking and before compression, encryption and erasure coding
-	EncodedHash             hash.Hash // After compression, encryption and erasure , including all the metadata in this struct except for EncodedHash
-	ReedSolomonShards       uint8     // Number of shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	ReedSolomonParityShards uint8     // Number of parity shards in Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards)
-	ReedSolomonIndex        uint8     // Index of the chunk in the Reed-Solomon coding (note that ReedSolomonShards + ReedSolomonParityShards is the total number of shards and that ReedSolomonShards comes before ReedSolomonParityShards in the index counting)
-	Size                    uint64    // Size of the shard in bytes
-	OriginalSize            uint64    // Size of the original encrypted chunk before Reed-Solomon encoding
-	EncapsulatedKey         []byte    // ML-KEM encapsulated secret for the chunk
-	Nonce                   []byte    // AES-GCM nonce for encryption
-	ChunkContent            []byte    // Content of the chunk after compression, encryption and erasure coding
+// SliceRecord represents a single Reed-Solomon slice (data or parity) persisted in the key-value store.
+type SliceRecord struct {
+	ChunkHash       hash.Hash // Hash of the clear chunk produced by Buzhash
+	SealedHash      hash.Hash // Hash of the sealed chunk (compressed + encrypted) prior to Reed-Solomon encoding
+	RSDataSlices    uint8     // Number of data slices in the originating stripe
+	RSParitySlices  uint8     // Number of parity slices in the originating stripe
+	RSSliceIndex    uint8     // Index of the slice within the stripe (data slices precede parity slices)
+	Size            uint64    // Size of this slice payload in bytes
+	OriginalSize    uint64    // Size of the sealed chunk before Reed-Solomon encoding
+	EncapsulatedKey []byte    // ML-KEM encapsulated secret for the sealed chunk
+	Nonce           []byte    // AES-GCM nonce for encryption
+	Payload         []byte    // Slice payload after Reed-Solomon encoding
 }
 
 func Init(crypt *crypt.Crypt, config *Config) (*KV, error) {

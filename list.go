@@ -11,39 +11,39 @@ import (
 
 // DataInfo represents detailed information about stored data
 type DataInfo struct {
-	Key                     hash.Hash   // The data key
-	KeyBase64               string      // Base64 encoded key for display
-	ChunkHashes             []hash.Hash // Hashes of all chunks
-	MetaChunkHashes         []hash.Hash // Hashes of all metadata chunks
-	ClearTextSize           uint64      // Original uncompressed data size
-	StorageSize             uint64      // Total size on storage (sum of all shards)
-	MetaClearTextSize       uint64      // Metadata clear text size
-	MetaStorageSize         uint64      // Total metadata storage size
-	NumChunks               int         // Number of logical chunks
-	NumShards               int         // Total number of Reed-Solomon shards
-	MetaNumChunks           int         // Number of metadata chunks
-	MetaNumShards           int         // Total number of metadata shards
-	ReedSolomonShards       uint8       // Data shards per chunk
-	ReedSolomonParityShards uint8       // Parity shards per chunk
-	ChunkDetails            []ChunkInfo // Detailed information per chunk
-	MetaData                []byte      // Decoded metadata payload
+	Key               hash.Hash   // The data key
+	KeyBase64         string      // Base64 encoded key for display
+	ChunkHashes       []hash.Hash // Hashes of all chunks
+	MetaChunkHashes   []hash.Hash // Hashes of all metadata chunks
+	ClearTextSize     uint64      // Original uncompressed data size
+	StorageSize       uint64      // Total size on storage (sum of all slices)
+	MetaClearTextSize uint64      // Metadata clear text size
+	MetaStorageSize   uint64      // Total metadata storage size
+	NumChunks         int         // Number of logical chunks
+	NumSlices         int         // Total number of Reed-Solomon slices
+	MetaNumChunks     int         // Number of metadata chunks
+	MetaNumSlices     int         // Total number of metadata slices
+	RSDataSlices      uint8       // Data slices per chunk
+	RSParitySlices    uint8       // Parity slices per chunk
+	ChunkDetails      []ChunkInfo // Detailed information per chunk
+	MetaData          []byte      // Decoded metadata payload
 }
 
-// ChunkInfo represents information about a single chunk and its shards
+// ChunkInfo represents information about a single chunk and its slices
 type ChunkInfo struct {
 	ChunkHash       hash.Hash   // Hash of the original chunk
 	ChunkHashBase64 string      // Base64 encoded chunk hash
 	OriginalSize    uint64      // Size before compression/encryption
 	CompressedSize  uint64      // Size after compression but before Reed-Solomon
-	ShardCount      int         // Number of shards for this chunk
-	ShardDetails    []ShardInfo // Information about each shard
+	SliceCount      int         // Number of slices for this chunk
+	SliceDetails    []SliceInfo // Information about each slice
 }
 
-// ShardInfo represents information about a single Reed-Solomon shard
-type ShardInfo struct {
+// SliceInfo represents information about a single Reed-Solomon slice
+type SliceInfo struct {
 	Index       uint8  // Reed-Solomon index
-	Size        uint64 // Size of this shard on storage
-	IsDataShard bool   // True if data shard, false if parity shard
+	Size        uint64 // Size of this slice on storage
+	IsDataSlice bool   // True if data slice, false if parity slice
 }
 
 // ListStoredData returns detailed information about all stored data
@@ -85,78 +85,78 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		// Initialize basic info
 		info.Key = key
 		info.KeyBase64 = base64.StdEncoding.EncodeToString(key[:])
-		info.ChunkHashes = metadata.ShardHashes
-		info.MetaChunkHashes = metadata.MetaShardHashes
-		info.NumChunks = len(metadata.ShardHashes)
-		info.MetaNumChunks = len(metadata.MetaShardHashes)
+		info.ChunkHashes = metadata.ChunkHashes
+		info.MetaChunkHashes = metadata.MetaChunkHashes
+		info.NumChunks = len(metadata.ChunkHashes)
+		info.MetaNumChunks = len(metadata.MetaChunkHashes)
 
-		// Load chunks to get detailed information
-		var allChunks []kvDataShard
-		for _, chunkHash := range metadata.ShardHashes {
-			chunks, err := k.loadChunksByHash(txn, chunkHash)
+		// Load slices to get detailed information
+		var allSlices []SliceRecord
+		for _, chunkHash := range metadata.ChunkHashes {
+			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
-				return fmt.Errorf("failed to load chunks for hash %x: %w", chunkHash, err)
+				return fmt.Errorf("failed to load slices for hash %x: %w", chunkHash, err)
 			}
-			allChunks = append(allChunks, chunks...)
+			allSlices = append(allSlices, slices...)
 		}
 
-		var allMetaChunks []kvDataShard
-		for _, chunkHash := range metadata.MetaShardHashes {
-			chunks, err := k.loadChunksByHash(txn, chunkHash)
+		var allMetaSlices []SliceRecord
+		for _, chunkHash := range metadata.MetaChunkHashes {
+			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
-				return fmt.Errorf("failed to load metadata chunks for hash %x: %w", chunkHash, err)
+				return fmt.Errorf("failed to load metadata slices for hash %x: %w", chunkHash, err)
 			}
-			allMetaChunks = append(allMetaChunks, chunks...)
+			allMetaSlices = append(allMetaSlices, slices...)
 		}
 
-		// Calculate sizes and analyze chunks
+		// Calculate sizes and analyze slices
 		var totalStorageSize uint64
 		var totalMetaStorageSize uint64
-		chunkMap := make(map[hash.Hash][]kvDataShard)
-		metaChunkMap := make(map[hash.Hash][]kvDataShard)
+		chunkMap := make(map[hash.Hash][]SliceRecord)
+		metaChunkMap := make(map[hash.Hash][]SliceRecord)
 
-		// Group chunks by hash
-		for _, chunk := range allChunks {
-			chunkMap[chunk.ChunkHash] = append(chunkMap[chunk.ChunkHash], chunk)
+		// Group slices by hash
+		for _, slice := range allSlices {
+			chunkMap[slice.ChunkHash] = append(chunkMap[slice.ChunkHash], slice)
 		}
-		for _, chunk := range allMetaChunks {
-			metaChunkMap[chunk.ChunkHash] = append(metaChunkMap[chunk.ChunkHash], chunk)
+		for _, slice := range allMetaSlices {
+			metaChunkMap[slice.ChunkHash] = append(metaChunkMap[slice.ChunkHash], slice)
 		}
 
 		// Process each chunk group
-		for _, chunkHash := range metadata.ShardHashes {
-			chunks := chunkMap[chunkHash]
-			if len(chunks) == 0 {
+		for _, chunkHash := range metadata.ChunkHashes {
+			slices := chunkMap[chunkHash]
+			if len(slices) == 0 {
 				continue
 			}
 
-			// Get Reed-Solomon configuration from first chunk
-			firstChunk := chunks[0]
-			if info.ReedSolomonShards == 0 {
-				info.ReedSolomonShards = firstChunk.ReedSolomonShards
-				info.ReedSolomonParityShards = firstChunk.ReedSolomonParityShards
+			// Get Reed-Solomon configuration from first slice
+			firstSlice := slices[0]
+			if info.RSDataSlices == 0 {
+				info.RSDataSlices = firstSlice.RSDataSlices
+				info.RSParitySlices = firstSlice.RSParitySlices
 			}
 
 			// Create chunk info
 			chunkInfo := ChunkInfo{
 				ChunkHash:       chunkHash,
 				ChunkHashBase64: base64.StdEncoding.EncodeToString(chunkHash[:]),
-				OriginalSize:    firstChunk.OriginalSize,
-				ShardCount:      len(chunks),
+				OriginalSize:    firstSlice.OriginalSize,
+				SliceCount:      len(slices),
 			}
 
 			// Calculate compressed size (size before Reed-Solomon splitting)
-			chunkInfo.CompressedSize = firstChunk.OriginalSize
+			chunkInfo.CompressedSize = firstSlice.OriginalSize
 
-			// Process each shard
-			for _, chunk := range chunks {
-				shardInfo := ShardInfo{
-					Index:       chunk.ReedSolomonIndex,
-					Size:        chunk.Size,
-					IsDataShard: chunk.ReedSolomonIndex < firstChunk.ReedSolomonShards,
+			// Process each slice
+			for _, slice := range slices {
+				sliceInfo := SliceInfo{
+					Index:       slice.RSSliceIndex,
+					Size:        slice.Size,
+					IsDataSlice: slice.RSSliceIndex < firstSlice.RSDataSlices,
 				}
-				chunkInfo.ShardDetails = append(chunkInfo.ShardDetails, shardInfo)
-				totalStorageSize += chunk.Size
+				chunkInfo.SliceDetails = append(chunkInfo.SliceDetails, sliceInfo)
+				totalStorageSize += slice.Size
 			}
 
 			info.ChunkDetails = append(info.ChunkDetails, chunkInfo)
@@ -164,28 +164,28 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		}
 
 		info.StorageSize = totalStorageSize
-		info.NumShards = len(allChunks)
+		info.NumSlices = len(allSlices)
 
-		// Process metadata chunks
-		for _, metaHash := range metadata.MetaShardHashes {
-			metaChunks := metaChunkMap[metaHash]
-			if len(metaChunks) == 0 {
+		// Process metadata slices
+		for _, metaHash := range metadata.MetaChunkHashes {
+			metaSlices := metaChunkMap[metaHash]
+			if len(metaSlices) == 0 {
 				continue
 			}
 
-			firstMeta := metaChunks[0]
+			firstMeta := metaSlices[0]
 			info.MetaClearTextSize += firstMeta.OriginalSize
 
-			for _, chunk := range metaChunks {
-				totalMetaStorageSize += chunk.Size
+			for _, slice := range metaSlices {
+				totalMetaStorageSize += slice.Size
 			}
 		}
 
 		info.MetaStorageSize = totalMetaStorageSize
-		info.MetaNumShards = len(allMetaChunks)
+		info.MetaNumSlices = len(allMetaSlices)
 
-		if len(allMetaChunks) > 0 && len(metadata.MetaShardHashes) > 0 {
-			metaPayload, _, _, err := k.reconstructPayload(allMetaChunks, metadata.MetaShardHashes)
+		if len(allMetaSlices) > 0 && len(metadata.MetaChunkHashes) > 0 {
+			metaPayload, _, _, err := k.reconstructPayload(allMetaSlices, metadata.MetaChunkHashes)
 			if err != nil {
 				return fmt.Errorf("failed to reconstruct metadata payload: %w", err)
 			}
@@ -209,28 +209,28 @@ func (info DataInfo) FormatDataInfo() string {
 	output += fmt.Sprintf("Clear Text Size: %s (%d bytes)\n", formatBytes(info.ClearTextSize), info.ClearTextSize)
 	output += fmt.Sprintf("Storage Size: %s (%d bytes)\n", formatBytes(info.StorageSize), info.StorageSize)
 	output += fmt.Sprintf("Compression Ratio: %.2fx\n", float64(info.StorageSize)/float64(info.ClearTextSize))
-	output += fmt.Sprintf("Chunks: %d, Total Shards: %d\n", info.NumChunks, info.NumShards)
+	output += fmt.Sprintf("Chunks: %d, Total Slices: %d\n", info.NumChunks, info.NumSlices)
 	if info.MetaNumChunks > 0 {
 		output += fmt.Sprintf("Metadata Size: %s (%d bytes)\n", formatBytes(info.MetaClearTextSize), info.MetaClearTextSize)
 		output += fmt.Sprintf("Metadata Storage Size: %s (%d bytes)\n", formatBytes(info.MetaStorageSize), info.MetaStorageSize)
-		output += fmt.Sprintf("Metadata Chunks: %d, Metadata Shards: %d\n", info.MetaNumChunks, info.MetaNumShards)
+		output += fmt.Sprintf("Metadata Chunks: %d, Metadata Slices: %d\n", info.MetaNumChunks, info.MetaNumSlices)
 	}
-	output += fmt.Sprintf("Reed-Solomon Config: %d data + %d parity shards per chunk\n\n",
-		info.ReedSolomonShards, info.ReedSolomonParityShards)
+	output += fmt.Sprintf("Reed-Solomon Config: %d data + %d parity slices per chunk\n\n",
+		info.RSDataSlices, info.RSParitySlices)
 
 	for i, chunk := range info.ChunkDetails {
 		output += fmt.Sprintf("  Chunk %d:\n", i+1)
 		output += fmt.Sprintf("    Hash: %s\n", chunk.ChunkHashBase64)
 		output += fmt.Sprintf("    Original Size: %s (%d bytes)\n", formatBytes(chunk.OriginalSize), chunk.OriginalSize)
-		output += fmt.Sprintf("    Shards: %d\n", chunk.ShardCount)
+		output += fmt.Sprintf("    Slices: %d\n", chunk.SliceCount)
 
-		for _, shard := range chunk.ShardDetails {
-			shardType := "data"
-			if !shard.IsDataShard {
-				shardType = "parity"
+		for _, slice := range chunk.SliceDetails {
+			sliceType := "data"
+			if !slice.IsDataSlice {
+				sliceType = "parity"
 			}
-			output += fmt.Sprintf("      Shard %d (%s): %s (%d bytes)\n",
-				shard.Index, shardType, formatBytes(shard.Size), shard.Size)
+			output += fmt.Sprintf("      Slice %d (%s): %s (%d bytes)\n",
+				slice.Index, sliceType, formatBytes(slice.Size), slice.Size)
 		}
 		output += "\n"
 	}

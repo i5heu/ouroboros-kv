@@ -41,7 +41,7 @@ func deserializeHashesFromBytes(data []byte) ([]hash.Hash, error) {
 
 	chunkSize := len(hash.Hash{})
 	if len(data)%chunkSize != 0 {
-		return nil, fmt.Errorf("invalid metadata shard hash payload length: %d", len(data))
+		return nil, fmt.Errorf("invalid metadata chunk hash payload length: %d", len(data))
 	}
 
 	count := len(data) / chunkSize
