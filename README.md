@@ -227,6 +227,11 @@ go test -run TestComprehensiveRelationships
 go test -run TestLargeFile
 ```
 
+## Terminology
+- **Chunk**: A segment of data created by the Buzhash algorithm for deduplication.
+- **Slice**: A segment of data created by Reed-Solomon encoding, which includes both data and parity slices.
+- **Sealed\***: Data that has been processed through the entire pipeline (chunked, compressed, encrypted, erasure coded). Like SealedHash or SealedSlice.
+- **Cleartext**: Original unprocessed data. 
 
 ## License
 
