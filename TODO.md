@@ -10,6 +10,7 @@
 - [ ] switch form SHA512 to keyed BLAKE3 for clear text hashing and unkeyed BLAKE3 for sealed data hashing - using https://github.com/lukechampine/blake3
   - [ ] ouroboros-crypt
   - [ ] ouroboros-kv
+- [ ] Memory/Storage leak tests: Run long running tests that continuously write and delete data while monitoring memory and storage usage to detect potential leaks.
 
 
 ## Open Questions
