@@ -8,8 +8,8 @@ import (
 	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/encrypt"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
 // setupTestKV creates a test KV instance with temporary directory

@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
 func (k *KV) StartTransactionCounter(paths []string, minimumFreeSpace int) {

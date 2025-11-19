@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/i5heu/ouroboros-crypt/encrypt"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/reedsolomon"
 )

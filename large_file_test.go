@@ -11,7 +11,7 @@ import (
 	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -1,6 +1,6 @@
 package ouroboroskv
 
-import "github.com/i5heu/ouroboros-crypt/hash"
+import "github.com/i5heu/ouroboros-crypt/pkg/hash"
 
 const testCreatedUnix = 1_700_000_000
 

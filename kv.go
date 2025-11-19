@@ -8,7 +8,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
 var log *slog.Logger

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/stretchr/testify/require"
 )
 

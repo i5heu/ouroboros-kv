@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
 const ALIAS_PREFIX = "alias:"

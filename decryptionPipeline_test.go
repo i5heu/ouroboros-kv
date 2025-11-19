@@ -8,7 +8,7 @@ import (
 	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
 // setupTestKVForDecryption creates a test KV instance for decryption tests

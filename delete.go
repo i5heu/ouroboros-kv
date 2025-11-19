@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
 // DeleteData removes data and all its associated slices from the key-value store

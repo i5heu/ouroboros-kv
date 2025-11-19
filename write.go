@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
-	"github.com/i5heu/ouroboros-crypt/hash"
+	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	pb "github.com/i5heu/ouroboros-kv/proto"
 	"google.golang.org/protobuf/proto"
 )
