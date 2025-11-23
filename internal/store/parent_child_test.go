@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"os"
@@ -8,6 +8,7 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +24,7 @@ func setupTestKVForParentChild(t *testing.T) (*KV, func()) {
 	cryptInstance := crypt.New()
 
 	// Create config
-	config := &Config{
+	config := &config.Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1, // 1GB minimum
 		Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),

@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,7 +24,7 @@ func TestDebugParentChildStorage(t *testing.T) {
 	cryptInstance := crypt.New()
 
 	// Create config
-	config := &Config{
+	config := &config.Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1,
 		Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),

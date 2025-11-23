@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"fmt"
@@ -91,10 +91,10 @@ func (k *KV) DeleteData(key hash.Hash) error {
 	})
 
 	if err != nil {
-		log.Error("Failed to delete data", "key", fmt.Sprintf("%x", key), "error", err)
+		k.log.Error("Failed to delete data", "key", fmt.Sprintf("%x", key), "error", err)
 		return fmt.Errorf("failed to delete data: %w", err)
 	}
 
-	log.Debug("Successfully deleted data", "key", fmt.Sprintf("%x", key))
+	k.log.Debug("Successfully deleted data", "key", fmt.Sprintf("%x", key))
 	return nil
 }

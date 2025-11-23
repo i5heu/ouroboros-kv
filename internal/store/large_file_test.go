@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,7 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			cryptInstance := crypt.New()
 
 			// Create KV config
-			config := &Config{
+			config := &config.Config{
 				Paths:            []string{tempDir},
 				MinimumFreeSpace: 1,
 				Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
@@ -150,7 +151,7 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			cryptInstance := crypt.New()
 
 			// Create KV config
-			config := &Config{
+			config := &config.Config{
 				Paths:            []string{tempDir},
 				MinimumFreeSpace: 1,
 				Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
@@ -267,7 +268,7 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 
 			// Create KV config
 			kvDir := filepath.Join(tempDir, "kv-data")
-			config := &Config{
+			config := &config.Config{
 				Paths:            []string{kvDir},
 				MinimumFreeSpace: 1,
 				Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),

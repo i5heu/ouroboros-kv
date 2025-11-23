@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"bytes"
@@ -146,11 +146,11 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 	// Commit the batch
 	err = wb.Flush()
 	if err != nil {
-		log.Error("Failed to write data", "error", err)
+		k.log.Error("Failed to write data", "error", err)
 		return hash.Hash{}, fmt.Errorf("failed to commit batch: %w", err)
 	}
 
-	log.Debug("Successfully wrote data", "key", fmt.Sprintf("%x", data.Key))
+	k.log.Debug("Successfully wrote data", "key", fmt.Sprintf("%x", data.Key))
 	return aliasKey, nil
 }
 
@@ -524,11 +524,11 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 	})
 
 	if err != nil {
-		log.Error("Failed to batch write data", "error", err)
+		k.log.Error("Failed to batch write data", "error", err)
 		return nil, fmt.Errorf("failed to batch write data: %w", err)
 	}
 
-	log.Debug("Successfully batch wrote data", "count", len(dataList))
+	k.log.Debug("Successfully batch wrote data", "count", len(dataList))
 	return keys, nil
 }
 

@@ -1,4 +1,4 @@
-package ouroboroskv
+package config
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ type Config struct {
 	Logger           *slog.Logger
 }
 
-func (sc *Config) checkConfig() error {
+func (sc *Config) CheckConfig() error {
 	if len(sc.Paths) == 0 {
 		return errors.New("no path provided in configuration")
 	}

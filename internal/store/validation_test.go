@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"fmt"

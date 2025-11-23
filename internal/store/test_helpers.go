@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import "github.com/i5heu/ouroboros-crypt/pkg/hash"
 

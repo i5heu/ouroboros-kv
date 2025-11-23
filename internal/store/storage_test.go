@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/pkg/config"
 )
 
 // setupTestKVForStorage creates a test KV instance for storage tests
@@ -23,7 +24,7 @@ func setupTestKVForStorage(t *testing.T) (*KV, func()) {
 	cryptInstance := crypt.New()
 
 	// Create config
-	config := &Config{
+	config := &config.Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1, // 1GB minimum
 		Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),

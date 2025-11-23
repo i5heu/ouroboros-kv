@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"bytes"
@@ -43,7 +43,7 @@ func (k *KV) ListStoredData() ([]DataInfo, error) {
 	for _, key := range keys {
 		info, err := k.GetDataInfo(key)
 		if err != nil {
-			log.Error("Failed to get info for key", "key", fmt.Sprintf("%x", key), "error", err)
+			k.log.Error("Failed to get info for key", "key", fmt.Sprintf("%x", key), "error", err)
 			continue
 		}
 		dataInfos = append(dataInfos, info)

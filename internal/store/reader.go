@@ -1,4 +1,4 @@
-package ouroboroskv
+package store
 
 import (
 	"bytes"
@@ -101,11 +101,11 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 	})
 
 	if err != nil {
-		log.Error("Failed to read data", "key", fmt.Sprintf("%x", key), "error", err)
+		k.log.Error("Failed to read data", "key", fmt.Sprintf("%x", key), "error", err)
 		return Data{}, fmt.Errorf("failed to read data: %w", err)
 	}
 
-	log.Debug("Successfully read data", "key", fmt.Sprintf("%x", key))
+	k.log.Debug("Successfully read data", "key", fmt.Sprintf("%x", key))
 	return data, nil
 }
 
@@ -475,11 +475,11 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 	})
 
 	if err != nil {
-		log.Error("Failed to batch read data", "error", err)
+		k.log.Error("Failed to batch read data", "error", err)
 		return nil, fmt.Errorf("failed to batch read data: %w", err)
 	}
 
-	log.Debug("Successfully batch read data", "count", len(keys))
+	k.log.Debug("Successfully batch read data", "count", len(keys))
 	return results, nil
 }
 
