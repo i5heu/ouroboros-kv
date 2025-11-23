@@ -302,7 +302,7 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 			return kvDataHash{}, fmt.Errorf("failed to parse metadata chunk hashes: %w", err)
 		}
 		metadata.MetaChunkHashes = hashes
-	} else if err != nil && err != badger.ErrKeyNotFound {
+	} else if err != badger.ErrKeyNotFound {
 		return kvDataHash{}, fmt.Errorf("failed to load metadata chunk hashes: %w", err)
 	}
 
