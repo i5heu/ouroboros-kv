@@ -68,9 +68,6 @@ type Store interface {
 	// ListStoredData returns DataInfo for every stored entry.
 	ListStoredData() ([]DataInfo, error)
 
-	// StartTransactionCounter starts the periodic transaction counter/monitor for given paths.
-	StartTransactionCounter(paths []string, minimumFreeSpace int)
-
 	// Validate verifies the data consistency for the given key.
 	Validate(key Hash) error
 
