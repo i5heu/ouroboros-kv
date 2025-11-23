@@ -127,6 +127,9 @@ func (k *KV) ListRootKeys() ([]hash.Hash, error) {
 			if bytes.HasPrefix(keyBytes, chunkHashPrefix) {
 				continue
 			}
+			if bytes.HasSuffix(keyBytes, []byte(":ct")) {
+				continue
+			}
 
 			var valueCopy []byte
 			if err := item.Value(func(val []byte) error {

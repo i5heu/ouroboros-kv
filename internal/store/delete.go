@@ -47,6 +47,33 @@ func (k *KV) DeleteData(key hash.Hash) error {
 			return fmt.Errorf("failed to load metadata for key %x: %w", canonicalKey, err)
 		}
 
+		children, err := collectChildrenForTxn(txn, canonicalKey)
+		if err != nil {
+			return fmt.Errorf("failed to load children for key %x: %w", canonicalKey, err)
+		}
+
+		if !isEmptyHash(metadata.Parent) {
+			if err := deleteRelationshipEntries(txn, metadata.Parent, canonicalKey); err != nil {
+				return err
+			}
+		}
+
+		for _, child := range children {
+			if err := deleteRelationshipEntries(txn, canonicalKey, child); err != nil {
+				return err
+			}
+
+			childMetadata, err := k.loadMetadata(txn, child)
+			if err != nil {
+				return fmt.Errorf("failed to load metadata for child %x: %w", child, err)
+			}
+
+			childMetadata.Parent = hash.Hash{}
+			if err := k.storeMetadata(txn, childMetadata); err != nil {
+				return fmt.Errorf("failed to update metadata for child %x: %w", child, err)
+			}
+		}
+
 		// Delete all slices associated with this data
 		for _, chunkHash := range metadata.ChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
@@ -69,6 +96,12 @@ func (k *KV) DeleteData(key hash.Hash) error {
 		err = txn.Delete([]byte(metadataKey))
 		if err != nil {
 			return fmt.Errorf("failed to delete metadata for key %x: %w", canonicalKey, err)
+		}
+
+		contentTypeKey := fmt.Sprintf("%s%x:ct", METADATA_PREFIX, canonicalKey)
+		err = txn.Delete([]byte(contentTypeKey))
+		if err != nil && err != badger.ErrKeyNotFound {
+			return fmt.Errorf("failed to delete content type for key %x: %w", canonicalKey, err)
 		}
 
 		metaChunksKey := fmt.Sprintf("%s%x", META_CHUNK_HASH_PREFIX, canonicalKey)
@@ -96,5 +129,19 @@ func (k *KV) DeleteData(key hash.Hash) error {
 	}
 
 	k.log.Debug("Successfully deleted data", "key", fmt.Sprintf("%x", key))
+	return nil
+}
+
+func deleteRelationshipEntries(txn *badger.Txn, parent, child hash.Hash) error {
+	parentToChildKey := fmt.Sprintf("%s%s:%s", PARENT_PREFIX, parent, child)
+	if err := txn.Delete([]byte(parentToChildKey)); err != nil && err != badger.ErrKeyNotFound {
+		return fmt.Errorf("failed to delete parent->child relationship (%x -> %x): %w", parent, child, err)
+	}
+
+	childToParentKey := fmt.Sprintf("%s%s:%s", CHILD_PREFIX, child, parent)
+	if err := txn.Delete([]byte(childToParentKey)); err != nil && err != badger.ErrKeyNotFound {
+		return fmt.Errorf("failed to delete child->parent relationship (%x <- %x): %w", child, parent, err)
+	}
+
 	return nil
 }
