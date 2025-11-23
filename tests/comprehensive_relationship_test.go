@@ -1,4 +1,4 @@
-package ouroboroskv
+package ouroboroskv__test
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
+	ouroboroskv "github.com/i5heu/ouroboros-kv"
 )
 
 func TestComprehensiveRelationships(t *testing.T) {
@@ -18,7 +19,7 @@ func TestComprehensiveRelationships(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	// Initialize the database
-	config := &Config{
+	config := &ouroboroskv.Config{
 		Paths:            []string{tempDir},
 		MinimumFreeSpace: 1,
 	}
@@ -26,34 +27,34 @@ func TestComprehensiveRelationships(t *testing.T) {
 	// Initialize crypt
 	cryptInstance := crypt.New()
 
-	kv, err := Init(cryptInstance, config)
+	kv, err := ouroboroskv.Init(cryptInstance, config)
 	if err != nil {
 		t.Fatalf("Failed to create OuroborosKV: %v", err)
 	}
-	defer kv.badgerDB.Close()
+	defer kv.Close()
 
 	// Store some test data with relationships
-	grandparentData := Data{
+	grandparentData := ouroboroskv.Data{
 		Content:        []byte("I am the grandparent"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	}
-	parentData := Data{
+	parentData := ouroboroskv.Data{
 		Content:        []byte("I am the parent"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	}
-	child1Data := Data{
+	child1Data := ouroboroskv.Data{
 		Content:        []byte("I am child 1"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	}
-	child2Data := Data{
+	child2Data := ouroboroskv.Data{
 		Content:        []byte("I am child 2"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	}
-	grandchild1Data := Data{
+	grandchild1Data := ouroboroskv.Data{
 		Content:        []byte("I am grandchild 1"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
