@@ -9,6 +9,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/pkg/spaceInformations"
 )
 
 var log *slog.Logger
@@ -87,7 +88,7 @@ func Init(crypt *crypt.Crypt, config *Config) (*KV, error) {
 		return nil, err
 	}
 
-	err = displayDiskUsage(config.Paths)
+	err = spaceInformations.DisplayDiskUsage(config.Paths)
 	if err != nil {
 		log.Error("failed to display disk usage", "error", err)
 		return nil, err

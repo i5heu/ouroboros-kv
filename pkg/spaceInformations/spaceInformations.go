@@ -1,4 +1,4 @@
-package ouroboroskv
+package spaceInformations
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ func getDiskUsageStats(path string) (disk syscall.Statfs_t, err error) {
 }
 
 // calculateDirectorySize calculates the total size of files within a directory
-func calculateDirectorySize(path string) (size int64, err error) {
+func CalculateDirectorySize(path string) (size int64, err error) {
 	err = filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -31,7 +31,7 @@ func calculateDirectorySize(path string) (size int64, err error) {
 	return
 }
 
-func getDeviceAndMountPoint(path string) (string, string, error) {
+func GetDeviceAndMountPoint(path string) (string, string, error) {
 	partitions, err := disk.Partitions(true)
 	if err != nil {
 		return "", "", err
@@ -113,11 +113,11 @@ func contains(path, mountpoint string) bool {
 	return strings.HasPrefix(p, m+string(os.PathSeparator))
 }
 
-// displayDiskUsage displays the disk usage information using structured logging
-func displayDiskUsage(paths []string) error {
+// DisplayDiskUsage displays the disk usage information using structured logging
+func DisplayDiskUsage(paths []string) error {
 
 	if len(paths) == 0 {
-		log.Error("No path provided in configuration")
+		slog.Error("No path provided in configuration")
 		return fmt.Errorf("no path provided in configuration")
 	}
 
@@ -129,13 +129,13 @@ func displayDiskUsage(paths []string) error {
 	for _, path := range paths {
 		disk, err := getDiskUsageStats(path)
 		if err != nil {
-			log.Error("Error retrieving disk usage stats", "path", path, "error", err)
+			slog.Error("Error retrieving disk usage stats", "path", path, "error", err)
 			return err
 		}
 
-		mountPoint, device, err := getDeviceAndMountPoint(path)
+		mountPoint, device, err := GetDeviceAndMountPoint(path)
 		if err != nil {
-			log.Error("Error finding device and mount point", "path", path, "error", err)
+			slog.Error("Error finding device and mount point", "path", path, "error", err)
 			return err
 		}
 
@@ -143,14 +143,14 @@ func displayDiskUsage(paths []string) error {
 		freeSpace := float64(disk.Bfree*uint64(disk.Bsize)) / 1e9
 		usedSpace := totalSpace - freeSpace
 
-		pathSize, err := calculateDirectorySize(path)
+		pathSize, err := CalculateDirectorySize(path)
 		if err != nil {
-			log.Error("Error calculating directory size", "path", path, "error", err)
+			slog.Error("Error calculating directory size", "path", path, "error", err)
 			return err
 		}
 		pathUsage := float64(pathSize) / 1e9
 
-		log.Info("Disk Usage information for path",
+		slog.Info("Disk Usage information for path",
 			"Path", path,
 			"Device", device,
 			"Mount Point", mountPoint,

@@ -1,4 +1,4 @@
-package ouroboroskv
+package spaceInformations
 
 import (
 	"path/filepath"
@@ -35,7 +35,7 @@ func TestGetDeviceAndMountPoint_Success(t *testing.T) {
 	}
 
 	path := filepath.Join(temp, "some", "sub", "path")
-	mountPoint, device, err := getDeviceAndMountPoint(path)
+	mountPoint, device, err := GetDeviceAndMountPoint(path)
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestGetDeviceAndMountPoint_Success(t *testing.T) {
 
 func TestGetDeviceAndMountPoint_NotFound(t *testing.T) {
 	path := "/a987wgf9a8wgf/path/that/does/not/exist"
-	_, _, err := getDeviceAndMountPoint(path)
+	_, _, err := GetDeviceAndMountPoint(path)
 	if err == nil {
 		t.Fatalf("expected error for path %q, got nil", path)
 	}
@@ -57,7 +57,7 @@ func TestGetDeviceAndMountPoint_NotFound(t *testing.T) {
 
 func TestGetDeviceAndMountPoint_RootHome(t *testing.T) {
 	path := "/home"
-	_, _, err := getDeviceAndMountPoint(path)
+	_, _, err := GetDeviceAndMountPoint(path)
 	if err != nil {
 		t.Fatalf("expected no error for path %q, got nil", path)
 	}
@@ -86,7 +86,7 @@ func TestGetDeviceAndMountPoint_TempDir(t *testing.T) {
 		t.Skipf("no partition found for temp dir %q", temp)
 	}
 
-	mountPoint, device, err := getDeviceAndMountPoint(temp)
+	mountPoint, device, err := GetDeviceAndMountPoint(temp)
 	if err != nil {
 		t.Fatalf("expected no error for temp dir %q, got: %v", temp, err)
 	}
@@ -122,7 +122,7 @@ func TestGetDeviceAndMountPoint_TempDirNested(t *testing.T) {
 		t.Skipf("no partition found for nested temp path %q", nested)
 	}
 
-	mountPoint, device, err := getDeviceAndMountPoint(nested)
+	mountPoint, device, err := GetDeviceAndMountPoint(nested)
 	if err != nil {
 		t.Fatalf("expected no error for nested temp path %q, got: %v", nested, err)
 	}
