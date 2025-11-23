@@ -50,28 +50,28 @@ func TestParentChildRelationships(t *testing.T) {
 
 	// Create test data with relationships
 	parentData := applyTestDefaults(Data{
-		MetaData:       []byte("parent metadata"),
+		Meta:           []byte("parent metadata"),
 		Content:        []byte("I am the parent"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	})
 
 	child1Data := applyTestDefaults(Data{
-		MetaData:       []byte("child1 metadata"),
+		Meta:           []byte("child1 metadata"),
 		Content:        []byte("I am child 1"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	})
 
 	child2Data := applyTestDefaults(Data{
-		MetaData:       []byte("child2 metadata"),
+		Meta:           []byte("child2 metadata"),
 		Content:        []byte("I am child 2"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	})
 
 	grandchildData := applyTestDefaults(Data{
-		MetaData:       []byte("grandchild metadata"),
+		Meta:           []byte("grandchild metadata"),
 		Content:        []byte("I am a grandchild"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
@@ -183,7 +183,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 
 	// Create test data
 	parentData := applyTestDefaults(Data{
-		MetaData:       []byte("batch parent metadata"),
+		Meta:           []byte("batch parent metadata"),
 		Content:        []byte("Batch parent"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
@@ -192,7 +192,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 	parentKey := expectedKeyForData(parentData)
 
 	child1Data := applyTestDefaults(Data{
-		MetaData:       []byte("batch child1 metadata"),
+		Meta:           []byte("batch child1 metadata"),
 		Content:        []byte("Batch child 1"),
 		Parent:         parentKey,
 		RSDataSlices:   3,
@@ -200,7 +200,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 	})
 
 	child2Data := applyTestDefaults(Data{
-		MetaData:       []byte("batch child2 metadata"),
+		Meta:           []byte("batch child2 metadata"),
 		Content:        []byte("Batch child 2"),
 		Parent:         parentKey,
 		RSDataSlices:   3,

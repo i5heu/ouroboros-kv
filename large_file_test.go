@@ -62,7 +62,7 @@ func TestLargeFileRoundTrip(t *testing.T) {
 
 			data := applyTestDefaults(Data{
 				Content:        originalData,
-				MetaData:       metadata,
+				Meta:           metadata,
 				Parent:         hash.Hash{},   // Empty parent
 				Children:       []hash.Hash{}, // No children
 				RSDataSlices:   8,
@@ -86,7 +86,7 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			t.Logf("Verifying %s of data integrity...", tc.name)
 			assert.Equal(t, key, retrievedData.Key, "Keys should match")
 			assert.Equal(t, data.Parent, retrievedData.Parent, "Parents should match")
-			assert.Equal(t, data.MetaData, retrievedData.MetaData, "Metadata should match")
+			assert.Equal(t, data.Meta, retrievedData.Meta, "Metadata should match")
 			assert.Equal(t, data.Created, retrievedData.Created, "Created timestamp should match")
 			assert.Empty(t, retrievedData.Aliases, "Aliases should be empty by default")
 			// Handle empty slice vs nil slice comparison
@@ -169,7 +169,7 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 
 			// Create Data structure
 			data := applyTestDefaults(Data{
-				MetaData:       []byte(fmt.Sprintf("metadata-%s", tc.name)),
+				Meta:           []byte(fmt.Sprintf("metadata-%s", tc.name)),
 				Content:        originalData,
 				Parent:         hash.Hash{},
 				Children:       []hash.Hash{},
@@ -205,7 +205,7 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			assert.Equal(t, data.Children, decoded.Children, "Children should match after decode")
 			assert.Equal(t, data.Created, decoded.Created, "Created should match after decode")
 			assert.Equal(t, data.Aliases, decoded.Aliases, "Aliases should match after decode")
-			assert.Equal(t, data.MetaData, decoded.MetaData, "Metadata should match after decode")
+			assert.Equal(t, data.Meta, decoded.Meta, "Metadata should match after decode")
 			assert.Equal(t, data.RSDataSlices, decoded.RSDataSlices, "RSDataSlices should match after decode")
 			assert.Equal(t, data.RSParitySlices, decoded.RSParitySlices, "RSParitySlices should match after decode")
 

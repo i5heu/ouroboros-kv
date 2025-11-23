@@ -11,7 +11,7 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-func (k *KV) decodeDataPipeline(kvDataLinked kvDataLinked) (Data, error) {
+func (k *KV) decodeDataPipeline(kvDataLinked kvData) (Data, error) {
 	content, rsData, rsParity, err := k.reconstructPayload(kvDataLinked.Slices, kvDataLinked.ChunkHashes)
 	if err != nil {
 		return Data{}, err
@@ -24,7 +24,7 @@ func (k *KV) decodeDataPipeline(kvDataLinked kvDataLinked) (Data, error) {
 
 	return Data{
 		Key:            kvDataLinked.Key,
-		MetaData:       metadata,
+		Meta:           metadata,
 		Content:        content,
 		Parent:         kvDataLinked.Parent,
 		Children:       kvDataLinked.Children,

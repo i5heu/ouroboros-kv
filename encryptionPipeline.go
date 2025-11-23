@@ -12,18 +12,18 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-func (k *KV) encodeDataPipeline(data Data) (kvDataLinked, error) {
+func (k *KV) encodeDataPipeline(data Data) (kvData, error) {
 	contentSlices, contentHashes, err := k.encodePayload(data.Content, data)
 	if err != nil {
-		return kvDataLinked{}, err
+		return kvData{}, err
 	}
 
-	metaSlices, metaHashes, err := k.encodePayload(data.MetaData, data)
+	metaSlices, metaHashes, err := k.encodePayload(data.Meta, data)
 	if err != nil {
-		return kvDataLinked{}, err
+		return kvData{}, err
 	}
 
-	return kvDataLinked{
+	return kvData{
 		Key:             data.Key,
 		Slices:          contentSlices,
 		ChunkHashes:     contentHashes,

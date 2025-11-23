@@ -48,7 +48,7 @@ func setupTestKV(t *testing.T) (*KV, func()) {
 // createTestData creates test data for encryption pipeline tests
 func createTestData() Data {
 	data := applyTestDefaults(Data{
-		MetaData:       []byte("Test metadata"),
+		Meta:           []byte("Test metadata"),
 		Content:        []byte("This is test content for the encryption pipeline. It should be long enough to test chunking functionality."),
 		Parent:         hash.HashString("parent-key"),
 		Children:       []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
@@ -144,7 +144,7 @@ func TestEncodeDataPipelineEmptyContent(t *testing.T) {
 		t.Errorf("Expected empty content, got %d bytes", len(decoded.Content))
 	}
 
-	if !bytes.Equal(decoded.MetaData, testData.MetaData) {
+	if !bytes.Equal(decoded.Meta, testData.Meta) {
 		t.Error("Metadata round-trip mismatch for empty content case")
 	}
 }
@@ -321,7 +321,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 
 			testData := Data{
 				Key:            hash.HashString("test-key-" + tc.name),
-				MetaData:       []byte("metadata-" + tc.name),
+				Meta:           []byte("metadata-" + tc.name),
 				Content:        content,
 				Parent:         hash.HashString("parent"),
 				Children:       []hash.Hash{},
@@ -366,7 +366,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 				t.Errorf("Decoded content mismatch for %s", tc.name)
 			}
 
-			if !bytes.Equal(decoded.MetaData, testData.MetaData) {
+			if !bytes.Equal(decoded.Meta, testData.Meta) {
 				t.Errorf("Decoded metadata mismatch for %s", tc.name)
 			}
 		})

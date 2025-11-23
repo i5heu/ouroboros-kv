@@ -1,8 +1,6 @@
 # TODO
 
 ## Priority
-- [ ] Enforce Terminology over codebase and docs
-  - [ ] Rename the `Data.MetaData` to something that does not interfere with `ContentMeta` aka `KvDataHash` (Also renamed to `KvDataKey` to `ContentMeta`)
 - [ ] Push encryption before Reed Solomon
   - [ ] New Buzhash Chunk based meta
     - [ ]  Nonce and EncapsulatedKey per Buzhash chunk
@@ -11,6 +9,7 @@
   - [ ] ouroboros-crypt
   - [ ] ouroboros-kv
 - [ ] Memory/Storage leak tests: Run long running tests that continuously write and delete data while monitoring memory and storage usage to detect potential leaks.
+- [ ] Quadruple check if the AES-GCM Nonce handling is correct and secure (never reuse Nonce with same key)
 
 
 ## Open Questions

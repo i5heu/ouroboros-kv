@@ -25,19 +25,27 @@ type KV struct {
 type Data struct {
 	Key hash.Hash // Key is derived from all fields except Children; must be zero when writing new data because it is generated from the content
 	// Part of the key hash:
-	MetaData       []byte      // Additional metadata associated with the data (stored securely but not part of the key)
-	Content        []byte      // The actual content of the data
-	Parent         hash.Hash   // Key of the parent value
-	Children       []hash.Hash // Keys of the child values (stored dynamically outside of metadata)
-	RSDataSlices   uint8       // Number of Reed-Solomon data slices per stripe (RSDataSlices + RSParitySlices = total slices)
-	RSParitySlices uint8       // Number of Reed-Solomon parity slices per stripe (RSDataSlices + RSParitySlices = total slices)
-	Created        int64       // Unix timestamp when the data was created
+	Content        []byte    // The actual content of the data (stored encrypted)
+	Parent         hash.Hash // Key of the parent value
+	Created        int64     // Unix timestamp when the data was created
+	RSDataSlices   uint8     // Number of Reed-Solomon data slices per stripe (RSDataSlices + RSParitySlices = total slices)
+	RSParitySlices uint8     // Number of Reed-Solomon parity slices per stripe (RSDataSlices + RSParitySlices = total slices)
+	// MimeType       string    // MIME type of the content
 	// Not part of the key hash:
-	Aliases []hash.Hash // Aliases for the data
+	Children []hash.Hash // Keys of the child values (stored dynamically and not part of the key hash)
+	Meta     []byte      // Dynamic additional metadata (stored encrypted but not part of the key hash) for embeddings, labels, etc.
+	Aliases  []hash.Hash // Aliases for the data (not part of the key hash)
+	// UnencryptedSystemData []UnencryptedSystemData // Unencrypted system data associated (not part of the key hash and not encrypted but very fast to read and write) for stats, distribution info, etc.
 }
 
-// KvData represents a key-value data structure with hierarchical relationships.
-type kvDataHash struct {
+// Unencrypted system data associated (not part of the key hash and not encrypted but very fast to read and write) for stats, distribution info, etc.
+// type UnencryptedSystemData struct {
+// 	Type string // Type of system data (e.g., "config", "stats")
+// 	Data []byte // Raw system data payload
+// }
+
+// kvRef represents the `Data` structure stored in the key-value store, with chunk hashes instead of full content.
+type kvRef struct {
 	Key             hash.Hash
 	ChunkHashes     []hash.Hash // Hash of deduplicated chunks
 	MetaChunkHashes []hash.Hash // Hash of metadata chunks
@@ -46,7 +54,8 @@ type kvDataHash struct {
 	Aliases         []hash.Hash // Aliases for the data
 }
 
-type kvDataLinked struct {
+// kvData represents the `Data` structure with full SliceRecords for decryption and reconstruction.
+type kvData struct {
 	Key             hash.Hash
 	Slices          []SliceRecord // Content RSSlices
 	ChunkHashes     []hash.Hash   // Order of content chunk hashes

@@ -70,7 +70,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		metaSliceMap[slice.ChunkHash] = append(metaSliceMap[slice.ChunkHash], slice)
 	}
 
-	metadata := kvDataHash{
+	metadata := kvRef{
 		Key:             encoded.Key,
 		ChunkHashes:     contentHashes,
 		MetaChunkHashes: metaHashes,
@@ -154,7 +154,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 }
 
 // storeMetadata serializes and stores KvDataHash metadata
-func (k *KV) storeMetadata(txn *badger.Txn, metadata kvDataHash) error {
+func (k *KV) storeMetadata(txn *badger.Txn, metadata kvRef) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
 		Key:     metadata.Key[:],
@@ -213,7 +213,7 @@ func (k *KV) storeSlice(txn *badger.Txn, slice SliceRecord) error {
 }
 
 // storeMetadataWithBatch serializes and stores KvDataHash metadata using WriteBatch
-func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvDataHash) error {
+func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvRef) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
 		Key:     metadata.Key[:],
@@ -358,7 +358,7 @@ func isEmptyHash(h hash.Hash) bool {
 
 func canonicalDataKeyPayload(data Data) []byte {
 	var buf bytes.Buffer
-	writeBytesWithLength(&buf, data.MetaData)
+	writeBytesWithLength(&buf, data.Meta)
 	writeBytesWithLength(&buf, data.Content)
 	buf.Write(data.Parent[:])
 	buf.WriteByte(data.RSDataSlices)
@@ -397,7 +397,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 
 	// Process all data through encoding pipeline first
 	var (
-		allMetadata      []kvDataHash
+		allMetadata      []kvRef
 		allSlices        []SliceRecord
 		metadataChildren [][]hash.Hash
 		canonicalKeys    []hash.Hash
@@ -442,7 +442,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			allSlices = append(allSlices, slice)
 		}
 
-		metadata := kvDataHash{
+		metadata := kvRef{
 			Key:             encoded.Key,
 			ChunkHashes:     contentHashes,
 			MetaChunkHashes: metaHashes,

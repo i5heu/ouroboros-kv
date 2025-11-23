@@ -36,7 +36,7 @@ func TestDebugParentChildStorage(t *testing.T) {
 
 	// Create simple test data
 	parentData := Data{
-		MetaData:       []byte("debug parent metadata"),
+		Meta:           []byte("debug parent metadata"),
 		Content:        []byte("I am the parent"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
@@ -48,7 +48,7 @@ func TestDebugParentChildStorage(t *testing.T) {
 	fmt.Printf("Storing parent with key: %x\n", parentKey)
 
 	childData := Data{
-		MetaData:       []byte("debug child metadata"),
+		Meta:           []byte("debug child metadata"),
 		Content:        []byte("I am child"),
 		Parent:         parentKey,
 		RSDataSlices:   3,

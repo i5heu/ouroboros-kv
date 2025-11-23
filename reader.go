@@ -77,7 +77,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Create KvDataLinked structure for decoding
-		kvDataLinked := kvDataLinked{
+		kvDataLinked := kvData{
 			Key:             metadata.Key,
 			Slices:          contentSlices,
 			ChunkHashes:     metadata.ChunkHashes,
@@ -229,16 +229,16 @@ func (k *KV) GetRoots() ([]hash.Hash, error) {
 }
 
 // loadMetadata loads and deserializes KvDataHash metadata from storage
-func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
+func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
 	// Create key with metadata prefix
 	metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
 
 	item, err := txn.Get([]byte(metadataKey))
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
-			return kvDataHash{}, fmt.Errorf("metadata not found for key %x", key)
+			return kvRef{}, fmt.Errorf("metadata not found for key %x", key)
 		}
-		return kvDataHash{}, fmt.Errorf("failed to get metadata: %w", err)
+		return kvRef{}, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
 	var protoData []byte
@@ -247,18 +247,18 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 		return nil
 	})
 	if err != nil {
-		return kvDataHash{}, fmt.Errorf("failed to read metadata value: %w", err)
+		return kvRef{}, fmt.Errorf("failed to read metadata value: %w", err)
 	}
 
 	// Deserialize protobuf
 	protoMetadata := &pb.KvDataHashProto{}
 	err = proto.Unmarshal(protoData, protoMetadata)
 	if err != nil {
-		return kvDataHash{}, fmt.Errorf("failed to unmarshal metadata for %x (len %d): %w", key, len(protoData), err)
+		return kvRef{}, fmt.Errorf("failed to unmarshal metadata for %x (len %d): %w", key, len(protoData), err)
 	}
 
 	// Convert back to Go struct
-	metadata := kvDataHash{
+	metadata := kvRef{
 		Key:     key, // We already know the key
 		Created: protoMetadata.Created,
 	}
@@ -294,16 +294,16 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvDataHash, error) {
 			return nil
 		})
 		if err != nil {
-			return kvDataHash{}, fmt.Errorf("failed to read metadata chunk hashes: %w", err)
+			return kvRef{}, fmt.Errorf("failed to read metadata chunk hashes: %w", err)
 		}
 
 		hashes, err := deserializeHashesFromBytes(raw)
 		if err != nil {
-			return kvDataHash{}, fmt.Errorf("failed to parse metadata chunk hashes: %w", err)
+			return kvRef{}, fmt.Errorf("failed to parse metadata chunk hashes: %w", err)
 		}
 		metadata.MetaChunkHashes = hashes
 	} else if err != badger.ErrKeyNotFound {
-		return kvDataHash{}, fmt.Errorf("failed to load metadata chunk hashes: %w", err)
+		return kvRef{}, fmt.Errorf("failed to load metadata chunk hashes: %w", err)
 	}
 
 	return metadata, nil
@@ -450,7 +450,7 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			}
 
 			// Create KvDataLinked structure for decoding
-			kvDataLinked := kvDataLinked{
+			kvDataLinked := kvData{
 				Key:             metadata.Key,
 				Slices:          contentSlices,
 				ChunkHashes:     metadata.ChunkHashes,
