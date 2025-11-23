@@ -12,8 +12,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-
-
 // ChunkInfo represents information about a single chunk and its slices
 type ChunkInfo struct {
 	ChunkHash       hash.Hash   // Hash of the original chunk
