@@ -21,6 +21,7 @@ type Hash = hash.Hash
 
 // Store is the public interface implemented by internal/store.KV.
 // Every method below is implemented by the concrete KV type in internal/store.
+// Store Interface Version 1.0.0 of ouroboros-kv.
 type Store interface {
 	// WriteData stores the provided Data and returns the computed data hash.
 	WriteData(data Data) (Hash, error)
