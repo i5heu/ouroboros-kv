@@ -19,8 +19,8 @@ func (r ValidationResult) Passed() bool {
 	return r.Err == nil
 }
 
-// ValidateKey verifies that the stored data associated with key still matches its hashes.
-func (k *KV) ValidateKey(key hash.Hash) error {
+// Validate verifies that the stored data associated with key still matches its hashes.
+func (k *KV) Validate(key hash.Hash) error {
 	data, err := k.ReadData(key)
 	if err != nil {
 		return fmt.Errorf("failed to read data for validation: %w", err)
@@ -47,7 +47,7 @@ func (k *KV) ValidateAll() ([]ValidationResult, error) {
 			Key:       key,
 			KeyBase64: base64.StdEncoding.EncodeToString(key[:]),
 		}
-		if err := k.ValidateKey(key); err != nil {
+		if err := k.Validate(key); err != nil {
 			res.Err = err
 		}
 		results = append(results, res)

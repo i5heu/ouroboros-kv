@@ -9,7 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestValidateKeySuccess(t *testing.T) {
+func TestValidateSuccess(t *testing.T) {
 	kv, cleanup := setupTestKVForStorage(t)
 	defer cleanup()
 
@@ -19,12 +19,12 @@ func TestValidateKeySuccess(t *testing.T) {
 		t.Fatalf("WriteData failed: %v", err)
 	}
 
-	if err := kv.ValidateKey(key); err != nil {
-		t.Fatalf("ValidateKey reported unexpected error: %v", err)
+	if err := kv.Validate(key); err != nil {
+		t.Fatalf("Validate reported unexpected error: %v", err)
 	}
 }
 
-func TestValidateKeyDetectsCorruption(t *testing.T) {
+func TestValidateDetectsCorruption(t *testing.T) {
 	kv, cleanup := setupTestKVForStorage(t)
 	defer cleanup()
 
@@ -72,8 +72,8 @@ func TestValidateKeyDetectsCorruption(t *testing.T) {
 		t.Fatalf("failed to corrupt stored chunk: %v", err)
 	}
 
-	if err := kv.ValidateKey(key); err == nil {
-		t.Fatalf("ValidateKey should have reported corruption")
+	if err := kv.Validate(key); err == nil {
+		t.Fatalf("Validate should have reported corruption")
 	}
 
 	results, err := kv.ValidateAll()

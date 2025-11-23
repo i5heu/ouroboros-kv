@@ -71,8 +71,8 @@ type Store interface {
 	// StartTransactionCounter starts the periodic transaction counter/monitor for given paths.
 	StartTransactionCounter(paths []string, minimumFreeSpace int)
 
-	// ValidateKey verifies the data consistency for the given key.
-	ValidateKey(key Hash) error
+	// Validate verifies the data consistency for the given key.
+	Validate(key Hash) error
 
 	// ValidateAll performs full validation across the store and returns results per entry.
 	ValidateAll() ([]ValidationResult, error)
