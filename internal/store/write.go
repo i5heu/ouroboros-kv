@@ -16,7 +16,7 @@ import (
 
 const (
 	// Key prefixes for different data types in BadgerDB
-	METADATA_PREFIX        = "meta:"             // For KvDataHash metadata
+	METADATA_PREFIX        = "meta:"             // For KvData metadata
 	META_CHUNK_HASH_PREFIX = "meta:chunkhashes:" // For metadata chunk hash ordering
 	SLICE_PREFIX           = "slice:"            // For individual SliceRecord payloads
 	PARENT_PREFIX          = "parent:"           // For parent relationships: parent_key -> child_key
@@ -78,6 +78,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		Parent:          encoded.Parent,
 		Created:         encoded.Created,
 		Aliases:         encoded.Aliases,
+		ContentType:     data.ContentType,
 	}
 
 	// Use WriteBatch for better handling of large transactions
@@ -88,6 +89,11 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 	err = k.storeMetadataWithBatch(wb, metadata)
 	if err != nil {
 		return hash.Hash{}, fmt.Errorf("failed to store metadata: %w", err)
+	}
+
+	// Store ContentType as a separate key with suffix :ct
+	if err := k.storeContentTypeWithBatch(wb, metadata); err != nil {
+		return hash.Hash{}, fmt.Errorf("failed to store content type: %w", err)
 	}
 
 	if err := k.storeMetadataChunkHashesWithBatch(wb, metadata.Key, metadata.MetaChunkHashes); err != nil {
@@ -184,6 +190,15 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata kvRef) error {
 	return txn.Set([]byte(key), data)
 }
 
+// store a content type value separately with suffix :ct
+func (k *KV) storeContentTypeTxn(txn *badger.Txn, metadata kvRef) error {
+	if metadata.ContentType == "" {
+		return nil
+	}
+	key := fmt.Sprintf("%s%x:ct", METADATA_PREFIX, metadata.Key)
+	return txn.Set([]byte(key), []byte(metadata.ContentType))
+}
+
 // storeSlice serializes and stores a SliceRecord
 func (k *KV) storeSlice(txn *badger.Txn, slice pipeline.SealedSlice) error {
 	// Convert to protobuf
@@ -241,6 +256,15 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvRef) error
 	key := fmt.Sprintf("%s%x", METADATA_PREFIX, metadata.Key)
 
 	return wb.Set([]byte(key), data)
+}
+
+// store content type with WriteBatch, if present
+func (k *KV) storeContentTypeWithBatch(wb *badger.WriteBatch, metadata kvRef) error {
+	if metadata.ContentType == "" {
+		return nil
+	}
+	key := fmt.Sprintf("%s%x:ct", METADATA_PREFIX, metadata.Key)
+	return wb.Set([]byte(key), []byte(metadata.ContentType))
 }
 
 func (k *KV) storeMetadataChunkHashesWithBatch(wb *badger.WriteBatch, key hash.Hash, hashes []hash.Hash) error {
@@ -361,6 +385,8 @@ func canonicalDataKeyPayload(data Data) []byte {
 	var buf bytes.Buffer
 	writeBytesWithLength(&buf, data.Meta)
 	writeBytesWithLength(&buf, data.Content)
+	// Include ContentType in the canonical payload so keys vary by content type
+	writeBytesWithLength(&buf, []byte(data.ContentType))
 	buf.Write(data.Parent[:])
 	buf.WriteByte(data.RSDataSlices)
 	buf.WriteByte(data.RSParitySlices)
@@ -450,6 +476,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			Parent:          encoded.Parent,
 			Created:         encoded.Created,
 			Aliases:         encoded.Aliases,
+			ContentType:     data.ContentType,
 		}
 		allMetadata = append(allMetadata, metadata)
 		metadataChildren = append(metadataChildren, encoded.Children)
@@ -477,6 +504,10 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			err := k.storeMetadata(txn, metadata)
 			if err != nil {
 				return fmt.Errorf("failed to store metadata for key %x: %w", metadata.Key, err)
+			}
+			// Store content type
+			if err := k.storeContentTypeTxn(txn, metadata); err != nil {
+				return fmt.Errorf("failed to store content type for key %x: %w", metadata.Key, err)
 			}
 
 			if err := k.storeMetadataChunkHashesTxn(txn, metadata.Key, metadata.MetaChunkHashes); err != nil {
@@ -594,5 +625,6 @@ func (k *KV) encodeDataPipeline(data Data) (pipeline.KvData, error) {
 		Children:        data.Children,
 		Created:         data.Created,
 		Aliases:         data.Aliases,
+		ContentType:     data.ContentType,
 	}, nil
 }

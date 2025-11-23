@@ -30,7 +30,7 @@ type Data struct {
 	Created        int64     // Unix timestamp when the data was created
 	RSDataSlices   uint8     // Number of Reed-Solomon data slices per stripe (RSDataSlices + RSParitySlices = total slices)
 	RSParitySlices uint8     // Number of Reed-Solomon parity slices per stripe (RSDataSlices + RSParitySlices = total slices)
-	// MimeType       string    // MIME type of the content
+	ContentType    string    // ContentType type of the content (not encrypted and is part of the key hash)
 	// Not part of the key hash:
 	Children []hash.Hash // Keys of the child values (stored dynamically and not part of the key hash)
 	Meta     []byte      // Dynamic additional metadata (stored encrypted but not part of the key hash) for embeddings, labels, etc.
@@ -52,6 +52,7 @@ type kvRef struct {
 	Parent          hash.Hash   // Key of the parent chunk
 	Created         int64       // Unix timestamp when the data was created
 	Aliases         []hash.Hash // Aliases for the data
+	ContentType     string      // ContentType type of the content (stored with ref for quick access)
 }
 
 // Close closes the BadgerDB instance

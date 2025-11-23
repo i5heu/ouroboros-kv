@@ -2,11 +2,13 @@ package store
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"testing"
 
 	"log/slog"
 
+	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
@@ -81,6 +83,102 @@ func TestWriteData(t *testing.T) {
 	}
 	if !exists {
 		t.Error("Data should exist after writing")
+	}
+}
+
+func TestContentTypeStoredAndRead(t *testing.T) {
+	kv, cleanup := setupTestKVForStorage(t)
+	defer cleanup()
+
+	// Create data with a content type
+	originalData := applyTestDefaults(Data{
+		Meta:           []byte("ct meta"),
+		Content:        []byte("ct content"),
+		Parent:         hash.HashString("parent-ct"),
+		Children:       []hash.Hash{},
+		RSDataSlices:   2,
+		RSParitySlices: 1,
+		ContentType:    "text/plain",
+	})
+
+	key, err := kv.WriteData(originalData)
+	if err != nil {
+		t.Fatalf("WriteData failed: %v", err)
+	}
+
+	// Read the data back
+	readData, err := kv.ReadData(key)
+	if err != nil {
+		t.Fatalf("ReadData failed: %v", err)
+	}
+
+	if readData.ContentType != originalData.ContentType {
+		t.Errorf("ContentType mismatch: expected %s got %s", originalData.ContentType, readData.ContentType)
+	}
+
+	// Verify the CT key exists in the DB and contains the correct value
+	ctKey := fmt.Sprintf("%s%x:ct", METADATA_PREFIX, key)
+	var storedCT string
+	err = kv.badgerDB.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(ctKey))
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			storedCT = string(val)
+			return nil
+		})
+	})
+	if err != nil {
+		t.Fatalf("Failed reading ct key: %v", err)
+	}
+	if storedCT != originalData.ContentType {
+		t.Errorf("Stored CT mismatch: expected %s got %s", originalData.ContentType, storedCT)
+	}
+}
+
+func TestKeyDependsOnContentType(t *testing.T) {
+	kv, cleanup := setupTestKVForStorage(t)
+	defer cleanup()
+
+	// Create two data objects with identical content but different content types
+	baseData := applyTestDefaults(Data{
+		Meta:           []byte("ct meta"),
+		Content:        []byte("same content"),
+		Parent:         hash.HashString("parent-ct"),
+		Children:       []hash.Hash{},
+		RSDataSlices:   2,
+		RSParitySlices: 1,
+	})
+
+	dataText := baseData
+	dataText.ContentType = "text/plain"
+
+	dataJson := baseData
+	dataJson.ContentType = "application/json"
+
+	keyText := expectedKeyForData(dataText)
+	keyJson := expectedKeyForData(dataJson)
+
+	if keyText == keyJson {
+		t.Fatalf("Expected keys to differ for different content types: both computed as %x", keyText)
+	}
+
+	// Write both and ensure the keys match computed expected keys
+	aliasText, err := kv.WriteData(dataText)
+	if err != nil {
+		t.Fatalf("WriteData failed for text: %v", err)
+	}
+	if aliasText != keyText {
+		t.Errorf("Generated key mismatch for text: expected %x, got %x", keyText, aliasText)
+	}
+
+	aliasJson, err := kv.WriteData(dataJson)
+	if err != nil {
+		t.Fatalf("WriteData failed for json: %v", err)
+	}
+	if aliasJson != keyJson {
+		t.Errorf("Generated key mismatch for json: expected %x, got %x", keyJson, aliasJson)
 	}
 }
 

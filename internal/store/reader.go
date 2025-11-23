@@ -88,6 +88,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 			Children:        children,
 			Created:         metadata.Created,
 			Aliases:         metadata.Aliases,
+			ContentType:     metadata.ContentType,
 		}
 
 		// Use decoding pipeline to reconstruct original data
@@ -305,6 +306,23 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
 		metadata.MetaChunkHashes = hashes
 	} else if err != badger.ErrKeyNotFound {
 		return kvRef{}, fmt.Errorf("failed to load metadata chunk hashes: %w", err)
+	}
+
+	// Load content type if present (stored with suffix :ct)
+	ctKey := fmt.Sprintf("%s%x:ct", METADATA_PREFIX, key)
+	ctItem, err := txn.Get([]byte(ctKey))
+	if err == nil {
+		var val []byte
+		err = ctItem.Value(func(v []byte) error {
+			val = append([]byte(nil), v...)
+			return nil
+		})
+		if err != nil {
+			return kvRef{}, fmt.Errorf("failed to read content type for key %x: %w", key, err)
+		}
+		metadata.ContentType = string(val)
+	} else if err != badger.ErrKeyNotFound {
+		return kvRef{}, fmt.Errorf("failed to load content type: %w", err)
 	}
 
 	return metadata, nil
@@ -720,5 +738,6 @@ func (k *KV) decodeDataPipeline(kvDataLinked pipeline.KvData) (Data, error) {
 		RSParitySlices: rsParity,
 		Created:        kvDataLinked.Created,
 		Aliases:        kvDataLinked.Aliases,
+		ContentType:    kvDataLinked.ContentType,
 	}, nil
 }
