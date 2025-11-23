@@ -2,7 +2,7 @@ package ouroboroskv
 
 import (
 	"bytes"
-	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 	"sync/atomic"
 
@@ -11,6 +11,26 @@ import (
 	pb "github.com/i5heu/ouroboros-kv/proto"
 	"google.golang.org/protobuf/proto"
 )
+
+// DataInfo represents detailed information about stored data
+type DataInfo struct {
+	Key               hash.Hash   // The data key
+	KeyBase64         string      // Base64 encoded key for display
+	ChunkHashes       []hash.Hash // Hashes of all chunks
+	MetaChunkHashes   []hash.Hash // Hashes of all metadata chunks
+	ClearTextSize     uint64      // Original uncompressed data size
+	StorageSize       uint64      // Total size on storage (sum of all slices)
+	MetaClearTextSize uint64      // Metadata clear text size
+	MetaStorageSize   uint64      // Total metadata storage size
+	NumChunks         int         // Number of logical chunks
+	NumSlices         int         // Total number of Reed-Solomon slices
+	MetaNumChunks     int         // Number of metadata chunks
+	MetaNumSlices     int         // Total number of metadata slices
+	RSDataSlices      uint8       // Data slices per chunk
+	RSParitySlices    uint8       // Parity slices per chunk
+	ChunkDetails      []ChunkInfo // Detailed information per chunk
+	MetaData          []byte      // Decoded metadata payload
+}
 
 // ReadData retrieves and decodes data from the key-value store by its hash key
 func (k *KV) ReadData(key hash.Hash) (Data, error) {
@@ -509,123 +529,171 @@ func (k *KV) DataExists(key hash.Hash) (bool, error) {
 	return exists, err
 }
 
-// ListKeys returns all data keys stored in the database
-func (k *KV) ListKeys() ([]hash.Hash, error) {
-	var keys []hash.Hash
+// GetDataInfo returns detailed information about a specific data entry
+func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 	atomic.AddUint64(&k.readCounter, 1)
 
-	err := k.badgerDB.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false // We only need keys
-		it := txn.NewIterator(opts)
-		defer it.Close()
+	var info DataInfo
 
-		prefix := []byte(METADATA_PREFIX)
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			if bytes.HasPrefix(it.Item().Key(), []byte(META_CHUNK_HASH_PREFIX)) {
+	err := k.badgerDB.View(func(txn *badger.Txn) error {
+		// Load metadata
+		metadata, err := k.loadMetadata(txn, key)
+		if err != nil {
+			return fmt.Errorf("failed to load metadata: %w", err)
+		}
+
+		// Initialize basic info
+		info.Key = key
+		info.KeyBase64 = base64.StdEncoding.EncodeToString(key[:])
+		info.ChunkHashes = metadata.ChunkHashes
+		info.MetaChunkHashes = metadata.MetaChunkHashes
+		info.NumChunks = len(metadata.ChunkHashes)
+		info.MetaNumChunks = len(metadata.MetaChunkHashes)
+
+		// Load slices to get detailed information
+		var allSlices []SliceRecord
+		for _, chunkHash := range metadata.ChunkHashes {
+			slices, err := k.loadSlicesByHash(txn, chunkHash)
+			if err != nil {
+				return fmt.Errorf("failed to load slices for hash %x: %w", chunkHash, err)
+			}
+			allSlices = append(allSlices, slices...)
+		}
+
+		var allMetaSlices []SliceRecord
+		for _, chunkHash := range metadata.MetaChunkHashes {
+			slices, err := k.loadSlicesByHash(txn, chunkHash)
+			if err != nil {
+				return fmt.Errorf("failed to load metadata slices for hash %x: %w", chunkHash, err)
+			}
+			allMetaSlices = append(allMetaSlices, slices...)
+		}
+
+		// Calculate sizes and analyze slices
+		var totalStorageSize uint64
+		var totalMetaStorageSize uint64
+		chunkMap := make(map[hash.Hash][]SliceRecord)
+		metaChunkMap := make(map[hash.Hash][]SliceRecord)
+
+		// Group slices by hash
+		for _, slice := range allSlices {
+			chunkMap[slice.ChunkHash] = append(chunkMap[slice.ChunkHash], slice)
+		}
+		for _, slice := range allMetaSlices {
+			metaChunkMap[slice.ChunkHash] = append(metaChunkMap[slice.ChunkHash], slice)
+		}
+
+		// Process each chunk group
+		for _, chunkHash := range metadata.ChunkHashes {
+			slices := chunkMap[chunkHash]
+			if len(slices) == 0 {
 				continue
 			}
-			item := it.Item()
-			key := item.Key()
 
-			// Extract hash from key (remove prefix)
-			if len(key) > len(METADATA_PREFIX) {
-				hashHex := string(key[len(METADATA_PREFIX):])
-				// The hash is double-encoded: it's hex of hex
-				// First decode to get the "inner" hex string
-				if len(hashHex) == 256 {
-					// Decode the first 128 chars to get ASCII hex
-					innerHexBytes, err := hex.DecodeString(hashHex[:128])
-					if err == nil && len(innerHexBytes) == 64 {
-						// Now we have the original hex string as ASCII
-						innerHex := string(innerHexBytes)
-						if len(innerHex) == 64 {
-							// This should be 64 ASCII hex chars representing 32 bytes
-							// But HashHexadecimal expects 128 hex chars for 64 bytes
-							// Let's try the second half too
-							secondHalfBytes, err := hex.DecodeString(hashHex[128:])
-							if err == nil && len(secondHalfBytes) == 64 {
-								fullInnerHex := string(innerHexBytes) + string(secondHalfBytes)
-								if len(fullInnerHex) == 128 {
-									hashValue, err := hash.HashHexadecimal(fullInnerHex)
-									if err == nil {
-										keys = append(keys, hashValue)
-									}
-								}
-							}
-						}
-					}
+			// Get Reed-Solomon configuration from first slice
+			firstSlice := slices[0]
+			if info.RSDataSlices == 0 {
+				info.RSDataSlices = firstSlice.RSDataSlices
+				info.RSParitySlices = firstSlice.RSParitySlices
+			}
+
+			// Create chunk info
+			chunkInfo := ChunkInfo{
+				ChunkHash:       chunkHash,
+				ChunkHashBase64: base64.StdEncoding.EncodeToString(chunkHash[:]),
+				OriginalSize:    firstSlice.OriginalSize,
+				SliceCount:      len(slices),
+			}
+
+			// Calculate compressed size (size before Reed-Solomon splitting)
+			chunkInfo.CompressedSize = firstSlice.OriginalSize
+
+			// Process each slice
+			for _, slice := range slices {
+				sliceInfo := SliceInfo{
+					Index:       slice.RSSliceIndex,
+					Size:        slice.Size,
+					IsDataSlice: slice.RSSliceIndex < firstSlice.RSDataSlices,
 				}
+				chunkInfo.SliceDetails = append(chunkInfo.SliceDetails, sliceInfo)
+				totalStorageSize += slice.Size
+			}
+
+			info.ChunkDetails = append(info.ChunkDetails, chunkInfo)
+			info.ClearTextSize += chunkInfo.OriginalSize
+		}
+
+		info.StorageSize = totalStorageSize
+		info.NumSlices = len(allSlices)
+
+		// Process metadata slices
+		for _, metaHash := range metadata.MetaChunkHashes {
+			metaSlices := metaChunkMap[metaHash]
+			if len(metaSlices) == 0 {
+				continue
+			}
+
+			firstMeta := metaSlices[0]
+			info.MetaClearTextSize += firstMeta.OriginalSize
+
+			for _, slice := range metaSlices {
+				totalMetaStorageSize += slice.Size
 			}
 		}
+
+		info.MetaStorageSize = totalMetaStorageSize
+		info.MetaNumSlices = len(allMetaSlices)
+
+		if len(allMetaSlices) > 0 && len(metadata.MetaChunkHashes) > 0 {
+			metaPayload, _, _, err := k.reconstructPayload(allMetaSlices, metadata.MetaChunkHashes)
+			if err != nil {
+				return fmt.Errorf("failed to reconstruct metadata payload: %w", err)
+			}
+			info.MetaData = metaPayload
+			info.MetaClearTextSize = uint64(len(metaPayload))
+		}
+
 		return nil
 	})
 
-	return keys, err
+	if err != nil {
+		return DataInfo{}, err
+	}
+
+	return info, nil
 }
 
-// ListRootKeys returns all metadata hashes that do not have a parent relationship
-func (k *KV) ListRootKeys() ([]hash.Hash, error) {
-	var roots []hash.Hash
-	atomic.AddUint64(&k.readCounter, 1)
+// FormatDataInfo returns a human-readable string representation of DataInfo
+func (info DataInfo) FormatDataInfo() string {
+	output := fmt.Sprintf("Data Key: %s\n", info.KeyBase64)
+	output += fmt.Sprintf("Clear Text Size: %s (%d bytes)\n", formatBytes(info.ClearTextSize), info.ClearTextSize)
+	output += fmt.Sprintf("Storage Size: %s (%d bytes)\n", formatBytes(info.StorageSize), info.StorageSize)
+	output += fmt.Sprintf("Compression Ratio: %.2fx\n", float64(info.StorageSize)/float64(info.ClearTextSize))
+	output += fmt.Sprintf("Chunks: %d, Total Slices: %d\n", info.NumChunks, info.NumSlices)
+	if info.MetaNumChunks > 0 {
+		output += fmt.Sprintf("Metadata Size: %s (%d bytes)\n", formatBytes(info.MetaClearTextSize), info.MetaClearTextSize)
+		output += fmt.Sprintf("Metadata Storage Size: %s (%d bytes)\n", formatBytes(info.MetaStorageSize), info.MetaStorageSize)
+		output += fmt.Sprintf("Metadata Chunks: %d, Metadata Slices: %d\n", info.MetaNumChunks, info.MetaNumSlices)
+	}
+	output += fmt.Sprintf("Reed-Solomon Config: %d data + %d parity slices per chunk\n\n",
+		info.RSDataSlices, info.RSParitySlices)
 
-	err := k.badgerDB.View(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
+	for i, chunk := range info.ChunkDetails {
+		output += fmt.Sprintf("  Chunk %d:\n", i+1)
+		output += fmt.Sprintf("    Hash: %s\n", chunk.ChunkHashBase64)
+		output += fmt.Sprintf("    Original Size: %s (%d bytes)\n", formatBytes(chunk.OriginalSize), chunk.OriginalSize)
+		output += fmt.Sprintf("    Slices: %d\n", chunk.SliceCount)
 
-		prefix := []byte(METADATA_PREFIX)
-		chunkHashPrefix := []byte(META_CHUNK_HASH_PREFIX)
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-
-			keyBytes := item.Key()
-			if bytes.HasPrefix(keyBytes, chunkHashPrefix) {
-				continue
+		for _, slice := range chunk.SliceDetails {
+			sliceType := "data"
+			if !slice.IsDataSlice {
+				sliceType = "parity"
 			}
-
-			var valueCopy []byte
-			if err := item.Value(func(val []byte) error {
-				valueCopy = append([]byte(nil), val...)
-				return nil
-			}); err != nil {
-				return fmt.Errorf("failed to read metadata value: %w", err)
-			}
-
-			protoMetadata := &pb.KvDataHashProto{}
-			if err := proto.Unmarshal(valueCopy, protoMetadata); err != nil {
-				return fmt.Errorf("failed to unmarshal metadata for %x: %w", keyBytes, err)
-			}
-
-			var parent hash.Hash
-			if len(protoMetadata.Parent) == len(parent) {
-				copy(parent[:], protoMetadata.Parent)
-			}
-
-			if !isEmptyHash(parent) {
-				continue
-			}
-
-			var keyHash hash.Hash
-			if len(protoMetadata.Key) == len(keyHash) {
-				copy(keyHash[:], protoMetadata.Key)
-				roots = append(roots, keyHash)
-				continue
-			}
-
-			// Fallback: attempt to parse the hash from the metadata key prefix
-			keyBytesPrefix := item.Key()
-			if len(keyBytesPrefix) > len(METADATA_PREFIX) {
-				hashHex := string(keyBytesPrefix[len(METADATA_PREFIX):])
-				hashValue, err := hash.HashHexadecimal(hashHex)
-				if err == nil {
-					roots = append(roots, hashValue)
-				}
-			}
+			output += fmt.Sprintf("      Slice %d (%s): %s (%d bytes)\n",
+				slice.Index, sliceType, formatBytes(slice.Size), slice.Size)
 		}
-		return nil
-	})
+		output += "\n"
+	}
 
-	return roots, err
+	return output
 }
