@@ -57,9 +57,9 @@ type kvRef struct {
 // kvData represents the `Data` structure with full SliceRecords for decryption and reconstruction.
 type kvData struct {
 	Key             hash.Hash
-	Slices          []SliceRecord // Content RSSlices
+	Slices          []SealedSlice // Content RSSlices
 	ChunkHashes     []hash.Hash   // Order of content chunk hashes
-	MetaSlices      []SliceRecord // Metadata RSSlices
+	MetaSlices      []SealedSlice // Metadata RSSlices
 	MetaChunkHashes []hash.Hash   // Order of metadata chunk hashes
 	Parent          hash.Hash     // Key of the parent chunk
 	Children        []hash.Hash   // Keys of the child chunks
@@ -67,8 +67,8 @@ type kvData struct {
 	Aliases         []hash.Hash   // Aliases for the data
 }
 
-// SliceRecord represents a single Reed-Solomon slice (data or parity) persisted in the key-value store.
-type SliceRecord struct {
+// SealedSlice represents a single Reed-Solomon slice (data or parity) persisted in the key-value store.
+type SealedSlice struct {
 	ChunkHash       hash.Hash // Hash of the clear chunk produced by Buzhash
 	SealedHash      hash.Hash // Hash of the sealed chunk (compressed + encrypted) prior to Reed-Solomon encoding
 	RSDataSlices    uint8     // Number of data slices in the originating stripe

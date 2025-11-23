@@ -35,7 +35,7 @@ func (k *KV) decodeDataPipeline(kvDataLinked kvData) (Data, error) {
 	}, nil
 }
 
-func (k *KV) reedSolomonReconstructor(slices []SliceRecord) (*encrypt.EncryptResult, error) {
+func (k *KV) reedSolomonReconstructor(slices []SealedSlice) (*encrypt.EncryptResult, error) {
 	if len(slices) == 0 {
 		return nil, fmt.Errorf("no slices provided for reconstruction")
 	}
@@ -116,7 +116,7 @@ func decompressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (k *KV) reconstructPayload(slices []SliceRecord, hashOrder []hash.Hash) ([]byte, uint8, uint8, error) {
+func (k *KV) reconstructPayload(slices []SealedSlice, hashOrder []hash.Hash) ([]byte, uint8, uint8, error) {
 	if len(slices) == 0 {
 		return nil, 0, 0, nil
 	}
@@ -125,7 +125,7 @@ func (k *KV) reconstructPayload(slices []SliceRecord, hashOrder []hash.Hash) ([]
 		return nil, 0, 0, fmt.Errorf("hash order missing for payload reconstruction")
 	}
 
-	sliceGroups := make(map[hash.Hash][]SliceRecord)
+	sliceGroups := make(map[hash.Hash][]SealedSlice)
 	for _, slice := range slices {
 		sliceGroups[slice.ChunkHash] = append(sliceGroups[slice.ChunkHash], slice)
 	}

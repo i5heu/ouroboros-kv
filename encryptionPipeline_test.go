@@ -345,7 +345,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 
 			// Verify all chunks have consistent Reed-Solomon settings
 			expectedTotal := testData.RSDataSlices + testData.RSParitySlices
-			chunksByGroup := make(map[hash.Hash][]SliceRecord)
+			chunksByGroup := make(map[hash.Hash][]SealedSlice)
 
 			for _, chunk := range result.Slices {
 				chunksByGroup[chunk.ChunkHash] = append(chunksByGroup[chunk.ChunkHash], chunk)

@@ -74,13 +74,13 @@ func compressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (k *KV) splitIntoRSSlices(data Data, sealedChunks []*encrypt.EncryptResult, chunkHashes []hash.Hash) ([]SliceRecord, error) {
+func (k *KV) splitIntoRSSlices(data Data, sealedChunks []*encrypt.EncryptResult, chunkHashes []hash.Hash) ([]SealedSlice, error) {
 	enc, err := reedsolomon.New(int(data.RSDataSlices), int(data.RSParitySlices))
 	if err != nil {
 		return nil, fmt.Errorf("error creating reed solomon encoder: %w", err)
 	}
 
-	var records []SliceRecord
+	var records []SealedSlice
 	for i, sealedChunk := range sealedChunks {
 		originalSize := uint64(len(sealedChunk.Ciphertext))
 		slices, err := enc.Split(sealedChunk.Ciphertext)
@@ -93,7 +93,7 @@ func (k *KV) splitIntoRSSlices(data Data, sealedChunks []*encrypt.EncryptResult,
 		}
 
 		for j, slice := range slices {
-			record := SliceRecord{
+			record := SealedSlice{
 				ChunkHash:       chunkHashes[i],
 				SealedHash:      hash.HashBytes(sealedChunk.Ciphertext),
 				RSDataSlices:    data.RSDataSlices,
@@ -112,7 +112,7 @@ func (k *KV) splitIntoRSSlices(data Data, sealedChunks []*encrypt.EncryptResult,
 	return records, nil
 }
 
-func (k *KV) encodePayload(payload []byte, data Data) ([]SliceRecord, []hash.Hash, error) {
+func (k *KV) encodePayload(payload []byte, data Data) ([]SealedSlice, []hash.Hash, error) {
 	if len(payload) == 0 {
 		return nil, nil, nil
 	}

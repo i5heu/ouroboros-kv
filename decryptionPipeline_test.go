@@ -140,7 +140,7 @@ func TestReedSolomonReconstructor(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash (simulating what decodeDataPipeline does)
-	chunkGroups := make(map[hash.Hash][]SliceRecord)
+	chunkGroups := make(map[hash.Hash][]SealedSlice)
 	for _, chunk := range encoded.Slices {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
@@ -189,7 +189,7 @@ func TestReedSolomonReconstructorWithMissingSlices(t *testing.T) {
 	}
 
 	// Group chunks by chunk hash
-	chunkGroups := make(map[hash.Hash][]SliceRecord)
+	chunkGroups := make(map[hash.Hash][]SealedSlice)
 	for _, chunk := range encoded.Slices {
 		chunkGroups[chunk.ChunkHash] = append(chunkGroups[chunk.ChunkHash], chunk)
 	}
@@ -222,13 +222,13 @@ func TestReedSolomonReconstructorErrors(t *testing.T) {
 	defer cleanup()
 
 	// Test with no chunks
-	_, err := kv.reedSolomonReconstructor([]SliceRecord{})
+	_, err := kv.reedSolomonReconstructor([]SealedSlice{})
 	if err == nil {
 		t.Error("Expected error when reconstructing with no chunks")
 	}
 
 	// Test with invalid Reed-Solomon index
-	invalidChunk := SliceRecord{
+	invalidChunk := SealedSlice{
 		ChunkHash:       hash.HashString("test"),
 		RSDataSlices:    2,
 		RSParitySlices:  1,
@@ -240,7 +240,7 @@ func TestReedSolomonReconstructorErrors(t *testing.T) {
 		Nonce:           []byte("nonce"),
 	}
 
-	_, err = kv.reedSolomonReconstructor([]SliceRecord{invalidChunk})
+	_, err = kv.reedSolomonReconstructor([]SealedSlice{invalidChunk})
 	if err == nil {
 		t.Error("Expected error when reconstructing with invalid Reed-Solomon index")
 	}

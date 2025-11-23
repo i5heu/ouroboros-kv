@@ -52,7 +52,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 
 	// Group content slices by chunk hash
 	contentHashes := make([]hash.Hash, 0, len(encoded.Slices))
-	contentSliceMap := make(map[hash.Hash][]SliceRecord)
+	contentSliceMap := make(map[hash.Hash][]SealedSlice)
 	for _, slice := range encoded.Slices {
 		if _, exists := contentSliceMap[slice.ChunkHash]; !exists {
 			contentHashes = append(contentHashes, slice.ChunkHash)
@@ -62,7 +62,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 
 	// Group metadata slices by chunk hash
 	metaHashes := make([]hash.Hash, 0, len(encoded.MetaSlices))
-	metaSliceMap := make(map[hash.Hash][]SliceRecord)
+	metaSliceMap := make(map[hash.Hash][]SealedSlice)
 	for _, slice := range encoded.MetaSlices {
 		if _, exists := metaSliceMap[slice.ChunkHash]; !exists {
 			metaHashes = append(metaHashes, slice.ChunkHash)
@@ -184,7 +184,7 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata kvRef) error {
 }
 
 // storeSlice serializes and stores a SliceRecord
-func (k *KV) storeSlice(txn *badger.Txn, slice SliceRecord) error {
+func (k *KV) storeSlice(txn *badger.Txn, slice SealedSlice) error {
 	// Convert to protobuf
 	protoSlice := &pb.SliceRecordProto{
 		ChunkHash:       slice.ChunkHash[:],
@@ -263,7 +263,7 @@ func (k *KV) storeMetadataChunkHashesTxn(txn *badger.Txn, key hash.Hash, hashes 
 }
 
 // storeSliceWithBatch serializes and stores a SliceRecord using WriteBatch
-func (k *KV) storeSliceWithBatch(wb *badger.WriteBatch, slice SliceRecord) error {
+func (k *KV) storeSliceWithBatch(wb *badger.WriteBatch, slice SealedSlice) error {
 	// Convert to protobuf
 	protoSlice := &pb.SliceRecordProto{
 		ChunkHash:       slice.ChunkHash[:],
@@ -398,7 +398,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 	// Process all data through encoding pipeline first
 	var (
 		allMetadata      []kvRef
-		allSlices        []SliceRecord
+		allSlices        []SealedSlice
 		metadataChildren [][]hash.Hash
 		canonicalKeys    []hash.Hash
 	)

@@ -1,15 +1,9 @@
 # TODO
 
 ## Priority
-- [ ] Push encryption before Reed Solomon
-  - [ ] New Buzhash Chunk based meta
-    - [ ]  Nonce and EncapsulatedKey per Buzhash chunk
-    - [ ]  refcounts per Buzhash chunk
-- [ ] switch form SHA512 to keyed BLAKE3 for clear text hashing and unkeyed BLAKE3 for sealed data hashing - using https://github.com/lukechampine/blake3
-  - [ ] ouroboros-crypt
-  - [ ] ouroboros-kv
-- [ ] Memory/Storage leak tests: Run long running tests that continuously write and delete data while monitoring memory and storage usage to detect potential leaks.
 - [ ] Quadruple check if the AES-GCM Nonce handling is correct and secure (never reuse Nonce with same key)
+- [ ] refcounts per Buzhash chunk
+- [ ] Memory/Storage leak tests: Run long running tests that continuously write and delete data while monitoring memory and storage usage to detect potential leaks.
 
 
 ## Open Questions

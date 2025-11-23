@@ -57,7 +57,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Load all content slices for this data
-		var contentSlices []SliceRecord
+		var contentSlices []SealedSlice
 		for _, chunkHash := range metadata.ChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -67,7 +67,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Load metadata slices if present
-		var metadataSlices []SliceRecord
+		var metadataSlices []SealedSlice
 		for _, chunkHash := range metadata.MetaChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -310,8 +310,8 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
 }
 
 // loadSlicesByHash loads all RS slices for a given chunk hash
-func (k *KV) loadSlicesByHash(txn *badger.Txn, chunkHash hash.Hash) ([]SliceRecord, error) {
-	var records []SliceRecord
+func (k *KV) loadSlicesByHash(txn *badger.Txn, chunkHash hash.Hash) ([]SealedSlice, error) {
+	var records []SealedSlice
 
 	// Create iterator to find all slices with this hash
 	prefix := fmt.Sprintf("%s%x_", SLICE_PREFIX, chunkHash)
@@ -338,7 +338,7 @@ func (k *KV) loadSlicesByHash(txn *badger.Txn, chunkHash hash.Hash) ([]SliceReco
 		}
 
 		// Convert back to Go struct
-		record := SliceRecord{
+		record := SealedSlice{
 			RSDataSlices:    uint8(protoSlice.RsDataSlices),
 			RSParitySlices:  uint8(protoSlice.RsParitySlices),
 			RSSliceIndex:    uint8(protoSlice.RsSliceIndex),
@@ -431,7 +431,7 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			}
 
 			// Load all slices
-			var contentSlices []SliceRecord
+			var contentSlices []SealedSlice
 			for _, chunkHash := range metadata.ChunkHashes {
 				slices, err := k.loadSlicesByHash(txn, chunkHash)
 				if err != nil {
@@ -440,7 +440,7 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 				contentSlices = append(contentSlices, slices...)
 			}
 
-			var metadataSlices []SliceRecord
+			var metadataSlices []SealedSlice
 			for _, chunkHash := range metadata.MetaChunkHashes {
 				slices, err := k.loadSlicesByHash(txn, chunkHash)
 				if err != nil {
@@ -551,7 +551,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		info.MetaNumChunks = len(metadata.MetaChunkHashes)
 
 		// Load slices to get detailed information
-		var allSlices []SliceRecord
+		var allSlices []SealedSlice
 		for _, chunkHash := range metadata.ChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -560,7 +560,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 			allSlices = append(allSlices, slices...)
 		}
 
-		var allMetaSlices []SliceRecord
+		var allMetaSlices []SealedSlice
 		for _, chunkHash := range metadata.MetaChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -572,8 +572,8 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		// Calculate sizes and analyze slices
 		var totalStorageSize uint64
 		var totalMetaStorageSize uint64
-		chunkMap := make(map[hash.Hash][]SliceRecord)
-		metaChunkMap := make(map[hash.Hash][]SliceRecord)
+		chunkMap := make(map[hash.Hash][]SealedSlice)
+		metaChunkMap := make(map[hash.Hash][]SealedSlice)
 
 		// Group slices by hash
 		for _, slice := range allSlices {
