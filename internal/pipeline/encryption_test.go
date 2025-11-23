@@ -1,108 +1,60 @@
-package ouroboroskv
+package pipeline
 
 import (
 	"bytes"
-	"os"
 	"testing"
-
-	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
-// setupTestKV creates a test KV instance with temporary directory
-func setupTestKV(t *testing.T) (*KV, func()) {
-	// Create temporary directory
-	tempDir, err := os.MkdirTemp("", "ouroboros-kv-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-
-	// Create a crypt instance for testing
-	cryptInstance := crypt.New()
-
-	// Create config
-	config := &Config{
-		Paths:            []string{tempDir},
-		MinimumFreeSpace: 1, // 1GB minimum
-		Logger:           slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})),
-	}
-
-	// Initialize KV
-	kv, err := Init(cryptInstance, config)
-	if err != nil {
-		t.Fatalf("Failed to initialize KV: %v", err)
-	}
-
-	// Return cleanup function
-	cleanup := func() {
-		kv.badgerDB.Close()
-		os.RemoveAll(tempDir)
-	}
-
-	return kv, cleanup
+// TestData is a local struct to hold test data, similar to Data in ouroboroskv
+type TestData struct {
+	Key            hash.Hash
+	Content        []byte
+	Meta           []byte
+	Parent         hash.Hash
+	Children       []hash.Hash
+	RSDataSlices   uint8
+	RSParitySlices uint8
+	Aliases        []hash.Hash
+	Created        int64
 }
 
-// createTestData creates test data for encryption pipeline tests
-func createTestData() Data {
-	data := applyTestDefaults(Data{
+func createTestData() TestData {
+	return TestData{
 		Meta:           []byte("Test metadata"),
 		Content:        []byte("This is test content for the encryption pipeline. It should be long enough to test chunking functionality."),
 		Parent:         hash.HashString("parent-key"),
 		Children:       []hash.Hash{hash.HashString("child1"), hash.HashString("child2")},
 		RSDataSlices:   3,
 		RSParitySlices: 2,
-	})
-	data.Key = expectedKeyForData(data)
-	return data
+		Key:            hash.HashString("test-key"),
+	}
 }
 
-func TestEncodeDataPipeline(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
+func TestEncodePayload(t *testing.T) {
+	c := crypt.New()
 	testData := createTestData()
 
-	result, err := kv.encodeDataPipeline(testData)
+	slices, chunkHashes, err := EncodePayload(testData.Content, testData.RSDataSlices, testData.RSParitySlices, c)
 	if err != nil {
-		t.Fatalf("encodeDataPipeline failed: %v", err)
-	}
-
-	// Verify basic structure
-	if result.Key != testData.Key {
-		t.Errorf("Expected key %v, got %v", testData.Key, result.Key)
-	}
-
-	if result.Parent != testData.Parent {
-		t.Errorf("Expected parent %v, got %v", testData.Parent, result.Parent)
-	}
-
-	if len(result.Children) != len(testData.Children) {
-		t.Errorf("Expected %d children, got %d", len(testData.Children), len(result.Children))
-	}
-
-	if result.Created != testData.Created {
-		t.Errorf("Expected created %d, got %d", testData.Created, result.Created)
-	}
-
-	if len(result.Aliases) != len(testData.Aliases) {
-		t.Errorf("Expected %d aliases, got %d", len(testData.Aliases), len(result.Aliases))
+		t.Fatalf("EncodePayload failed: %v", err)
 	}
 
 	// Verify chunks were created
-	if len(result.Slices) == 0 {
+	if len(slices) == 0 {
 		t.Error("Expected content slices to be created, but got none")
 	}
 
-	if len(result.MetaSlices) == 0 {
-		t.Error("Expected metadata slices to be created, but got none")
+	if len(chunkHashes) == 0 {
+		t.Error("Expected chunk hashes to be created, but got none")
 	}
 
 	// Verify Reed-Solomon settings
 	totalSlices := testData.RSDataSlices + testData.RSParitySlices
-	for i, chunk := range result.Slices {
+	for i, chunk := range slices {
 		if chunk.RSDataSlices != testData.RSDataSlices {
 			t.Errorf("Chunk %d: expected %d Reed-Solomon slices, got %d", i, testData.RSDataSlices, chunk.RSDataSlices)
 		}
@@ -115,47 +67,29 @@ func TestEncodeDataPipeline(t *testing.T) {
 	}
 }
 
-func TestEncodeDataPipelineEmptyContent(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
+func TestEncodePayloadEmptyContent(t *testing.T) {
+	c := crypt.New()
 	testData := createTestData()
 	testData.Content = []byte{}
 
-	result, err := kv.encodeDataPipeline(testData)
+	slices, chunkHashes, err := EncodePayload(testData.Content, testData.RSDataSlices, testData.RSParitySlices, c)
 	if err != nil {
-		t.Fatalf("encodeDataPipeline with empty content failed: %v", err)
+		t.Fatalf("EncodePayload with empty content failed: %v", err)
 	}
 
-	if len(result.Slices) != 0 {
-		t.Errorf("Expected no content slices, got %d", len(result.Slices))
+	if len(slices) != 0 {
+		t.Errorf("Expected no content slices, got %d", len(slices))
 	}
 
-	if len(result.MetaSlices) == 0 {
-		t.Error("Expected metadata slices to be created")
-	}
-
-	decoded, err := kv.decodeDataPipeline(result)
-	if err != nil {
-		t.Fatalf("decodeDataPipeline failed: %v", err)
-	}
-
-	if len(decoded.Content) != 0 {
-		t.Errorf("Expected empty content, got %d bytes", len(decoded.Content))
-	}
-
-	if !bytes.Equal(decoded.Meta, testData.Meta) {
-		t.Error("Metadata round-trip mismatch for empty content case")
+	if len(chunkHashes) != 0 {
+		t.Errorf("Expected no chunk hashes, got %d", len(chunkHashes))
 	}
 }
 
 func TestChunker(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
 	testData := createTestData()
 
-	chunks, err := kv.chunker(testData.Content)
+	chunks, err := chunkerFunc(testData.Content)
 	if err != nil {
 		t.Fatalf("chunker failed: %v", err)
 	}
@@ -176,12 +110,9 @@ func TestChunker(t *testing.T) {
 }
 
 func TestChunkerEmptyContent(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
 	testData := createTestData()
 	testData.Content = []byte{}
-	chunks, err := kv.chunker(testData.Content)
+	chunks, err := chunkerFunc(testData.Content)
 	if err != nil {
 		t.Fatalf("chunker with empty content failed: %v", err)
 	}
@@ -224,14 +155,11 @@ func TestCompressWithZstdEmptyData(t *testing.T) {
 }
 
 func TestReedSolomonSplitter(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
-	// Create test encrypted chunks
+	c := crypt.New()
 	testData := createTestData()
 	testContent := []byte("test content for reed solomon")
 
-	encryptedChunk, err := kv.crypt.Encrypt(testContent)
+	encryptedChunk, err := c.Encrypt(testContent)
 	if err != nil {
 		t.Fatalf("Failed to encrypt test content: %v", err)
 	}
@@ -239,7 +167,7 @@ func TestReedSolomonSplitter(t *testing.T) {
 	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	chunks, err := kv.splitIntoRSSlices(testData, encryptedChunks, chunkHashes)
+	chunks, err := splitIntoRSSlices(testData.RSDataSlices, testData.RSParitySlices, encryptedChunks, chunkHashes)
 	if err != nil {
 		t.Fatalf("splitIntoRSSlices failed: %v", err)
 	}
@@ -276,15 +204,13 @@ func TestReedSolomonSplitter(t *testing.T) {
 }
 
 func TestReedSolomonSplitterInvalidSliceConfig(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
-
+	c := crypt.New()
 	testData := createTestData()
 	testData.RSDataSlices = 0 // Invalid configuration
 	testData.RSParitySlices = 1
 
 	testContent := []byte("test content")
-	encryptedChunk, err := kv.crypt.Encrypt(testContent)
+	encryptedChunk, err := c.Encrypt(testContent)
 	if err != nil {
 		t.Fatalf("Failed to encrypt test content: %v", err)
 	}
@@ -292,15 +218,14 @@ func TestReedSolomonSplitterInvalidSliceConfig(t *testing.T) {
 	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	_, err = kv.splitIntoRSSlices(testData, encryptedChunks, chunkHashes)
+	_, err = splitIntoRSSlices(testData.RSDataSlices, testData.RSParitySlices, encryptedChunks, chunkHashes)
 	if err == nil {
 		t.Error("Expected error for invalid Reed-Solomon configuration, but got none")
 	}
 }
 
 func TestEncodeDataPipelineIntegration(t *testing.T) {
-	kv, cleanup := setupTestKV(t)
-	defer cleanup()
+	c := crypt.New()
 
 	// Test with various content sizes
 	testCases := []struct {
@@ -319,7 +244,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 				content[i] = byte(i % 256)
 			}
 
-			testData := Data{
+			testData := TestData{
 				Key:            hash.HashString("test-key-" + tc.name),
 				Meta:           []byte("metadata-" + tc.name),
 				Content:        content,
@@ -329,25 +254,21 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 				RSParitySlices: 1,
 			}
 
-			result, err := kv.encodeDataPipeline(testData)
+			slices, chunkHashes, err := EncodePayload(testData.Content, testData.RSDataSlices, testData.RSParitySlices, c)
 			if err != nil {
-				t.Fatalf("encodeDataPipeline failed for %s: %v", tc.name, err)
+				t.Fatalf("EncodePayload failed for %s: %v", tc.name, err)
 			}
 
 			// Verify result structure
-			if len(result.Slices) == 0 {
+			if len(slices) == 0 {
 				t.Errorf("No chunks created for %s", tc.name)
-			}
-
-			if len(result.MetaSlices) == 0 {
-				t.Errorf("No metadata slices created for %s", tc.name)
 			}
 
 			// Verify all chunks have consistent Reed-Solomon settings
 			expectedTotal := testData.RSDataSlices + testData.RSParitySlices
 			chunksByGroup := make(map[hash.Hash][]SealedSlice)
 
-			for _, chunk := range result.Slices {
+			for _, chunk := range slices {
 				chunksByGroup[chunk.ChunkHash] = append(chunksByGroup[chunk.ChunkHash], chunk)
 			}
 
@@ -357,17 +278,13 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 				}
 			}
 
-			decoded, err := kv.decodeDataPipeline(result)
+			decodedContent, _, _, err := ReconstructPayload(slices, chunkHashes, c)
 			if err != nil {
-				t.Fatalf("decodeDataPipeline failed for %s: %v", tc.name, err)
+				t.Fatalf("ReconstructPayload failed for %s: %v", tc.name, err)
 			}
 
-			if !bytes.Equal(decoded.Content, testData.Content) {
+			if !bytes.Equal(decodedContent, testData.Content) {
 				t.Errorf("Decoded content mismatch for %s", tc.name)
-			}
-
-			if !bytes.Equal(decoded.Meta, testData.Meta) {
-				t.Errorf("Decoded metadata mismatch for %s", tc.name)
 			}
 		})
 	}

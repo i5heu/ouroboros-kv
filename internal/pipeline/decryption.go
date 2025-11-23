@@ -1,41 +1,18 @@
-package ouroboroskv
+package pipeline
 
 import (
 	"bytes"
 	"fmt"
 	"io"
 
+	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/reedsolomon"
 )
 
-func (k *KV) decodeDataPipeline(kvDataLinked kvData) (Data, error) {
-	content, rsData, rsParity, err := k.reconstructPayload(kvDataLinked.Slices, kvDataLinked.ChunkHashes)
-	if err != nil {
-		return Data{}, err
-	}
-
-	metadata, _, _, err := k.reconstructPayload(kvDataLinked.MetaSlices, kvDataLinked.MetaChunkHashes)
-	if err != nil {
-		return Data{}, err
-	}
-
-	return Data{
-		Key:            kvDataLinked.Key,
-		Meta:           metadata,
-		Content:        content,
-		Parent:         kvDataLinked.Parent,
-		Children:       kvDataLinked.Children,
-		RSDataSlices:   rsData,
-		RSParitySlices: rsParity,
-		Created:        kvDataLinked.Created,
-		Aliases:        kvDataLinked.Aliases,
-	}, nil
-}
-
-func (k *KV) reedSolomonReconstructor(slices []SealedSlice) (*encrypt.EncryptResult, error) {
+func reedSolomonReconstructor(slices []SealedSlice) (*encrypt.EncryptResult, error) {
 	if len(slices) == 0 {
 		return nil, fmt.Errorf("no slices provided for reconstruction")
 	}
@@ -116,7 +93,7 @@ func decompressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (k *KV) reconstructPayload(slices []SealedSlice, hashOrder []hash.Hash) ([]byte, uint8, uint8, error) {
+func ReconstructPayload(slices []SealedSlice, hashOrder []hash.Hash, c *crypt.Crypt) ([]byte, uint8, uint8, error) {
 	if len(slices) == 0 {
 		return nil, 0, 0, nil
 	}
@@ -139,12 +116,12 @@ func (k *KV) reconstructPayload(slices []SealedSlice, hashOrder []hash.Hash) ([]
 			return nil, 0, 0, fmt.Errorf("missing slice group for hash %x", chunkHash)
 		}
 
-		encryptedChunk, err := k.reedSolomonReconstructor(stripeSlices)
+		encryptedChunk, err := reedSolomonReconstructor(stripeSlices)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to reconstruct Reed-Solomon chunk: %w", err)
 		}
 
-		decryptedChunk, err := k.crypt.Decrypt(encryptedChunk)
+		decryptedChunk, err := c.Decrypt(encryptedChunk)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to decrypt chunk: %w", err)
 		}

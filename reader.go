@@ -8,6 +8,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/pipeline"
 	pb "github.com/i5heu/ouroboros-kv/proto"
 	"google.golang.org/protobuf/proto"
 )
@@ -57,7 +58,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Load all content slices for this data
-		var contentSlices []SealedSlice
+		var contentSlices []pipeline.SealedSlice
 		for _, chunkHash := range metadata.ChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -67,7 +68,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Load metadata slices if present
-		var metadataSlices []SealedSlice
+		var metadataSlices []pipeline.SealedSlice
 		for _, chunkHash := range metadata.MetaChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -77,7 +78,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 		}
 
 		// Create KvDataLinked structure for decoding
-		kvDataLinked := kvData{
+		kvDataLinked := pipeline.KvData{
 			Key:             metadata.Key,
 			Slices:          contentSlices,
 			ChunkHashes:     metadata.ChunkHashes,
@@ -310,8 +311,8 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
 }
 
 // loadSlicesByHash loads all RS slices for a given chunk hash
-func (k *KV) loadSlicesByHash(txn *badger.Txn, chunkHash hash.Hash) ([]SealedSlice, error) {
-	var records []SealedSlice
+func (k *KV) loadSlicesByHash(txn *badger.Txn, chunkHash hash.Hash) ([]pipeline.SealedSlice, error) {
+	var records []pipeline.SealedSlice
 
 	// Create iterator to find all slices with this hash
 	prefix := fmt.Sprintf("%s%x_", SLICE_PREFIX, chunkHash)
@@ -338,7 +339,7 @@ func (k *KV) loadSlicesByHash(txn *badger.Txn, chunkHash hash.Hash) ([]SealedSli
 		}
 
 		// Convert back to Go struct
-		record := SealedSlice{
+		record := pipeline.SealedSlice{
 			RSDataSlices:    uint8(protoSlice.RsDataSlices),
 			RSParitySlices:  uint8(protoSlice.RsParitySlices),
 			RSSliceIndex:    uint8(protoSlice.RsSliceIndex),
@@ -431,7 +432,7 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			}
 
 			// Load all slices
-			var contentSlices []SealedSlice
+			var contentSlices []pipeline.SealedSlice
 			for _, chunkHash := range metadata.ChunkHashes {
 				slices, err := k.loadSlicesByHash(txn, chunkHash)
 				if err != nil {
@@ -440,7 +441,7 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 				contentSlices = append(contentSlices, slices...)
 			}
 
-			var metadataSlices []SealedSlice
+			var metadataSlices []pipeline.SealedSlice
 			for _, chunkHash := range metadata.MetaChunkHashes {
 				slices, err := k.loadSlicesByHash(txn, chunkHash)
 				if err != nil {
@@ -450,7 +451,7 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
 			}
 
 			// Create KvDataLinked structure for decoding
-			kvDataLinked := kvData{
+			kvDataLinked := pipeline.KvData{
 				Key:             metadata.Key,
 				Slices:          contentSlices,
 				ChunkHashes:     metadata.ChunkHashes,
@@ -551,7 +552,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		info.MetaNumChunks = len(metadata.MetaChunkHashes)
 
 		// Load slices to get detailed information
-		var allSlices []SealedSlice
+		var allSlices []pipeline.SealedSlice
 		for _, chunkHash := range metadata.ChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -560,7 +561,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 			allSlices = append(allSlices, slices...)
 		}
 
-		var allMetaSlices []SealedSlice
+		var allMetaSlices []pipeline.SealedSlice
 		for _, chunkHash := range metadata.MetaChunkHashes {
 			slices, err := k.loadSlicesByHash(txn, chunkHash)
 			if err != nil {
@@ -572,8 +573,8 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		// Calculate sizes and analyze slices
 		var totalStorageSize uint64
 		var totalMetaStorageSize uint64
-		chunkMap := make(map[hash.Hash][]SealedSlice)
-		metaChunkMap := make(map[hash.Hash][]SealedSlice)
+		chunkMap := make(map[hash.Hash][]pipeline.SealedSlice)
+		metaChunkMap := make(map[hash.Hash][]pipeline.SealedSlice)
 
 		// Group slices by hash
 		for _, slice := range allSlices {
@@ -645,7 +646,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 		info.MetaNumSlices = len(allMetaSlices)
 
 		if len(allMetaSlices) > 0 && len(metadata.MetaChunkHashes) > 0 {
-			metaPayload, _, _, err := k.reconstructPayload(allMetaSlices, metadata.MetaChunkHashes)
+			metaPayload, _, _, err := pipeline.ReconstructPayload(allMetaSlices, metadata.MetaChunkHashes, k.crypt)
 			if err != nil {
 				return fmt.Errorf("failed to reconstruct metadata payload: %w", err)
 			}
@@ -696,4 +697,28 @@ func (info DataInfo) FormatDataInfo() string {
 	}
 
 	return output
+}
+
+func (k *KV) decodeDataPipeline(kvDataLinked pipeline.KvData) (Data, error) {
+	content, rsData, rsParity, err := pipeline.ReconstructPayload(kvDataLinked.Slices, kvDataLinked.ChunkHashes, k.crypt)
+	if err != nil {
+		return Data{}, err
+	}
+
+	metadata, _, _, err := pipeline.ReconstructPayload(kvDataLinked.MetaSlices, kvDataLinked.MetaChunkHashes, k.crypt)
+	if err != nil {
+		return Data{}, err
+	}
+
+	return Data{
+		Key:            kvDataLinked.Key,
+		Meta:           metadata,
+		Content:        content,
+		Parent:         kvDataLinked.Parent,
+		Children:       kvDataLinked.Children,
+		RSDataSlices:   rsData,
+		RSParitySlices: rsParity,
+		Created:        kvDataLinked.Created,
+		Aliases:        kvDataLinked.Aliases,
+	}, nil
 }
