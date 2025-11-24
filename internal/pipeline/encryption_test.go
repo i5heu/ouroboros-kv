@@ -7,6 +7,7 @@ import (
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 )
 
 // TestData is a local struct to hold test data, similar to Data in ouroboroskv
@@ -266,7 +267,7 @@ func TestEncodeDataPipelineIntegration(t *testing.T) {
 
 			// Verify all chunks have consistent Reed-Solomon settings
 			expectedTotal := testData.RSDataSlices + testData.RSParitySlices
-			chunksByGroup := make(map[hash.Hash][]SealedSlice)
+			chunksByGroup := make(map[hash.Hash][]types.SealedSlice)
 
 			for _, chunk := range slices {
 				chunksByGroup[chunk.ChunkHash] = append(chunksByGroup[chunk.ChunkHash], chunk)

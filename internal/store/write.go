@@ -10,6 +10,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/i5heu/ouroboros-kv/internal/pipeline"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	pb "github.com/i5heu/ouroboros-kv/proto"
 	"google.golang.org/protobuf/proto"
 )
@@ -53,7 +54,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 
 	// Group content slices by chunk hash
 	contentHashes := make([]hash.Hash, 0, len(encoded.Slices))
-	contentSliceMap := make(map[hash.Hash][]pipeline.SealedSlice)
+	contentSliceMap := make(map[hash.Hash][]types.SealedSlice)
 	for _, slice := range encoded.Slices {
 		if _, exists := contentSliceMap[slice.ChunkHash]; !exists {
 			contentHashes = append(contentHashes, slice.ChunkHash)
@@ -63,7 +64,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 
 	// Group metadata slices by chunk hash
 	metaHashes := make([]hash.Hash, 0, len(encoded.MetaSlices))
-	metaSliceMap := make(map[hash.Hash][]pipeline.SealedSlice)
+	metaSliceMap := make(map[hash.Hash][]types.SealedSlice)
 	for _, slice := range encoded.MetaSlices {
 		if _, exists := metaSliceMap[slice.ChunkHash]; !exists {
 			metaHashes = append(metaHashes, slice.ChunkHash)
@@ -200,7 +201,7 @@ func (k *KV) storeContentTypeTxn(txn *badger.Txn, metadata kvRef) error {
 }
 
 // storeSlice serializes and stores a SliceRecord
-func (k *KV) storeSlice(txn *badger.Txn, slice pipeline.SealedSlice) error {
+func (k *KV) storeSlice(txn *badger.Txn, slice types.SealedSlice) error {
 	// Convert to protobuf
 	protoSlice := &pb.SliceRecordProto{
 		ChunkHash:       slice.ChunkHash[:],
@@ -288,7 +289,7 @@ func (k *KV) storeMetadataChunkHashesTxn(txn *badger.Txn, key hash.Hash, hashes 
 }
 
 // storeSliceWithBatch serializes and stores a SliceRecord using WriteBatch
-func (k *KV) storeSliceWithBatch(wb *badger.WriteBatch, slice pipeline.SealedSlice) error {
+func (k *KV) storeSliceWithBatch(wb *badger.WriteBatch, slice types.SealedSlice) error {
 	// Convert to protobuf
 	protoSlice := &pb.SliceRecordProto{
 		ChunkHash:       slice.ChunkHash[:],
@@ -425,7 +426,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 	// Process all data through encoding pipeline first
 	var (
 		allMetadata      []kvRef
-		allSlices        []pipeline.SealedSlice
+		allSlices        []types.SealedSlice
 		metadataChildren [][]hash.Hash
 		canonicalKeys    []hash.Hash
 	)
@@ -604,18 +605,18 @@ func (k *KV) storeParentChildRelationshipsTxn(txn *badger.Txn, dataKey, parent h
 	return nil
 }
 
-func (k *KV) encodeDataPipeline(data Data) (pipeline.KvData, error) {
+func (k *KV) encodeDataPipeline(data Data) (types.KvData, error) {
 	contentSlices, contentHashes, err := pipeline.EncodePayload(data.Content, data.RSDataSlices, data.RSParitySlices, k.crypt)
 	if err != nil {
-		return pipeline.KvData{}, err
+		return types.KvData{}, err
 	}
 
 	metaSlices, metaHashes, err := pipeline.EncodePayload(data.Meta, data.RSDataSlices, data.RSParitySlices, k.crypt)
 	if err != nil {
-		return pipeline.KvData{}, err
+		return types.KvData{}, err
 	}
 
-	return pipeline.KvData{
+	return types.KvData{
 		Key:             data.Key,
 		Slices:          contentSlices,
 		ChunkHashes:     contentHashes,

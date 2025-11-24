@@ -8,11 +8,12 @@ import (
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/reedsolomon"
 )
 
-func reedSolomonReconstructor(slices []SealedSlice) (*encrypt.EncryptResult, error) {
+func reedSolomonReconstructor(slices []types.SealedSlice) (*encrypt.EncryptResult, error) {
 	if len(slices) == 0 {
 		return nil, fmt.Errorf("no slices provided for reconstruction")
 	}
@@ -93,7 +94,7 @@ func decompressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func ReconstructPayload(slices []SealedSlice, hashOrder []hash.Hash, c *crypt.Crypt) ([]byte, uint8, uint8, error) {
+func ReconstructPayload(slices []types.SealedSlice, hashOrder []hash.Hash, c *crypt.Crypt) ([]byte, uint8, uint8, error) {
 	if len(slices) == 0 {
 		return nil, 0, 0, nil
 	}
@@ -102,7 +103,7 @@ func ReconstructPayload(slices []SealedSlice, hashOrder []hash.Hash, c *crypt.Cr
 		return nil, 0, 0, fmt.Errorf("hash order missing for payload reconstruction")
 	}
 
-	sliceGroups := make(map[hash.Hash][]SealedSlice)
+	sliceGroups := make(map[hash.Hash][]types.SealedSlice)
 	for _, slice := range slices {
 		sliceGroups[slice.ChunkHash] = append(sliceGroups[slice.ChunkHash], slice)
 	}

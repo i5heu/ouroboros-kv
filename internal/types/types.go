@@ -1,4 +1,4 @@
-package pipeline
+package types
 
 import (
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
@@ -15,7 +15,7 @@ type KvData struct {
 	Children        []hash.Hash   // Keys of the child chunks
 	Created         int64         // Unix timestamp when the data was created
 	Aliases         []hash.Hash   // Aliases for the data
-	ContentType     string        // Content type for the data (unencrypted)
+	ContentType     string        // Content type for the data - IETF RFC 9110 §8.3 https://datatracker.ietf.org/doc/html/rfc9110#section-8.3 (unencrypted)
 }
 
 // SealedSlice represents a single Reed-Solomon slice (data or parity) persisted in the key-value store.

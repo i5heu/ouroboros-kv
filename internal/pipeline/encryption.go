@@ -8,6 +8,7 @@ import (
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	chunker "github.com/ipfs/boxo/chunker"
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/reedsolomon"
@@ -50,13 +51,13 @@ func compressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func splitIntoRSSlices(rsDataSlices, rsParitySlices uint8, sealedChunks []*encrypt.EncryptResult, chunkHashes []hash.Hash) ([]SealedSlice, error) {
+func splitIntoRSSlices(rsDataSlices, rsParitySlices uint8, sealedChunks []*encrypt.EncryptResult, chunkHashes []hash.Hash) ([]types.SealedSlice, error) {
 	enc, err := reedsolomon.New(int(rsDataSlices), int(rsParitySlices))
 	if err != nil {
 		return nil, fmt.Errorf("error creating reed solomon encoder: %w", err)
 	}
 
-	var records []SealedSlice
+	var records []types.SealedSlice
 	for i, sealedChunk := range sealedChunks {
 		originalSize := uint64(len(sealedChunk.Ciphertext))
 		slices, err := enc.Split(sealedChunk.Ciphertext)
@@ -69,7 +70,7 @@ func splitIntoRSSlices(rsDataSlices, rsParitySlices uint8, sealedChunks []*encry
 		}
 
 		for j, slice := range slices {
-			record := SealedSlice{
+			record := types.SealedSlice{
 				ChunkHash:       chunkHashes[i],
 				SealedHash:      hash.HashBytes(sealedChunk.Ciphertext),
 				RSDataSlices:    rsDataSlices,
@@ -88,7 +89,7 @@ func splitIntoRSSlices(rsDataSlices, rsParitySlices uint8, sealedChunks []*encry
 	return records, nil
 }
 
-func EncodePayload(payload []byte, rsDataSlices, rsParitySlices uint8, c *crypt.Crypt) ([]SealedSlice, []hash.Hash, error) {
+func EncodePayload(payload []byte, rsDataSlices, rsParitySlices uint8, c *crypt.Crypt) ([]types.SealedSlice, []hash.Hash, error) {
 	if len(payload) == 0 {
 		return nil, nil, nil
 	}
