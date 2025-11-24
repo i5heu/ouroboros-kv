@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	"github.com/shirou/gopsutil/disk"
 )
 

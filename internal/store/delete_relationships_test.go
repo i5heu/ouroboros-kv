@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"

@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"

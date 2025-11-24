@@ -3,6 +3,8 @@ package ouroboroskv__test
 import (
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	ouroboroskv "github.com/i5heu/ouroboros-kv"
 )
 

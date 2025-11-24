@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	crypt "github.com/i5heu/ouroboros-crypt"
 	ouroboroskv "github.com/i5heu/ouroboros-kv"
 )

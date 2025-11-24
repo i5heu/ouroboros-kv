@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	"github.com/dgraph-io/badger/v4"
 	pb "github.com/i5heu/ouroboros-kv/proto"
 	"google.golang.org/protobuf/proto"

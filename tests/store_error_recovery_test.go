@@ -6,8 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	crypt "github.com/i5heu/ouroboros-crypt"
 	ouroboroskv "github.com/i5heu/ouroboros-kv"
+	"github.com/i5heu/ouroboros-kv/internal/testutil"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 )
 
@@ -442,6 +445,7 @@ func TestExtremelyLargeSingleWrite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping large write test in short mode")
 	}
+	testutil.RequireLong(t)
 
 	tempDir := t.TempDir()
 	cryptInstance := crypt.New()

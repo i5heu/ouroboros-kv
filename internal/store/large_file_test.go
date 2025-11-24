@@ -12,6 +12,7 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/testutil"
 	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/assert"
@@ -24,15 +25,20 @@ func TestLargeFileRoundTrip(t *testing.T) {
 		name string
 		size int64
 	}{
-		{"1MB", 1 * 1024 * 1024},
-		{"10MB", 10 * 1024 * 1024},
-		{"50MB", 50 * 1024 * 1024},
-		{"100MB", 100 * 1024 * 1024},
-		{"500MB", 500 * 1024 * 1024},
+		{"LargeFileRoundTrip 1MB", 1 * 1024 * 1024},
+		{"LargeFileRoundTrip 5MB", 5 * 1024 * 1024},
+		{"LargeFileRoundTrip 10MB", 10 * 1024 * 1024},
+		{"LargeFileRoundTrip 50MB", 50 * 1024 * 1024},
+		{"LargeFileRoundTrip 100MB", 100 * 1024 * 1024},
+		{"LargeFileRoundTrip 500MB", 500 * 1024 * 1024},
 	}
 
 	for _, tc := range sizes {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.size > 5*1024*1024 {
+				testutil.RequireLong(t)
+			}
+
 			// Create temporary directory for this test
 			tempDir, err := os.MkdirTemp("", "ouroboros-kv-large-test-")
 			require.NoError(t, err)
@@ -136,13 +142,18 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 		name string
 		size int64
 	}{
-		{"10MB", 10 * 1024 * 1024},
-		{"50MB", 50 * 1024 * 1024},
-		{"100MB", 100 * 1024 * 1024},
+		{"EncodingDecodingPipelineWithLargeFiles 1MB", 1 * 1024 * 1024},
+		{"EncodingDecodingPipelineWithLargeFiles 5MB", 5 * 1024 * 1024},
+		{"EncodingDecodingPipelineWithLargeFiles 10MB", 10 * 1024 * 1024},
+		{"EncodingDecodingPipelineWithLargeFiles 50MB", 50 * 1024 * 1024},
+		{"EncodingDecodingPipelineWithLargeFiles 100MB", 100 * 1024 * 1024},
 	}
-
 	for _, tc := range sizes {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.size > 5*1024*1024 {
+				testutil.RequireLong(t)
+			}
+
 			// Create temporary directory for this test
 			tempDir, err := os.MkdirTemp("", "ouroboros-kv-pipeline-test-")
 			require.NoError(t, err)
@@ -243,13 +254,18 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 		name string
 		size int64
 	}{
-		{"1MB", 1 * 1024 * 1024},
-		{"10MB", 10 * 1024 * 1024},
-		{"50MB", 50 * 1024 * 1024},
+		{"VirtualFileStorageWithCLI 1MB", 1 * 1024 * 1024},
+		{"VirtualFileStorageWithCLI 5MB", 5 * 1024 * 1024},
+		{"VirtualFileStorageWithCLI 10MB", 10 * 1024 * 1024},
+		{"VirtualFileStorageWithCLI 50MB", 50 * 1024 * 1024},
 	}
 
 	for _, tc := range sizes {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.size > 5*1024*1024 {
+				testutil.RequireLong(t)
+			}
+
 			// Create temporary directory for this test
 			tempDir, err := os.MkdirTemp("", "ouroboros-kv-cli-test-")
 			require.NoError(t, err)

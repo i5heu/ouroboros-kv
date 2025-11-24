@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"

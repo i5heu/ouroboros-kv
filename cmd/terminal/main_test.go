@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"testing"
 
+	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
+
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/stretchr/testify/require"
 )
