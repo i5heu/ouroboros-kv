@@ -95,9 +95,6 @@ func TestReedSolomonReconstructor(t *testing.T) {
 
 	// Let's use the helper to generate valid slices first
 	c := crypt.New()
-	testData := createTestData()
-	testData.RSDataSlices = dataSlices
-	testData.RSParitySlices = paritySlices
 
 	// Encrypt a small piece of data
 	content := []byte("test-content")
