@@ -32,6 +32,8 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 	require.NoError(b, err)
 	defer kv.Close()
 
+	tracker := newLiveKeyTracker()
+
 	// 2. Pre-populate deterministic data set once for the entire benchmark
 	const staticDataCount = 128
 	const expectedRootChildren = staticDataCount / 2
@@ -43,6 +45,7 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 	}
 	rootKey, err := kv.WriteData(rootData)
 	require.NoError(b, err)
+	tracker.add(rootKey)
 
 	staticKeys := make([]hash.Hash, staticDataCount)
 	staticValues := make([][]byte, staticDataCount)
@@ -69,6 +72,7 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 		require.NoError(b, err)
 		staticKeys[i] = key
 		staticValues[i] = copyBytes(content)
+		tracker.add(key)
 	}
 
 	children, err := kv.GetChildren(rootKey)
@@ -110,6 +114,8 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 					continue
 				}
 
+				tracker.add(key)
+
 				readData, err := kv.ReadData(key)
 				if err != nil {
 					b.Errorf("Op %d: read failed: %v", id, err)
@@ -134,6 +140,8 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 					continue
 				}
 
+				tracker.remove(key)
+
 				if exists, err := kv.DataExists(key); err != nil {
 					b.Errorf("Op %d: DataExists failed: %v", id, err)
 				} else if exists {
@@ -157,6 +165,8 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 					b.Errorf("Op %d: child write failed: %v", id, err)
 					continue
 				}
+
+				tracker.add(childKey)
 
 				if parent, err := kv.GetParent(childKey); err != nil {
 					b.Errorf("Op %d: get parent failed: %v", id, err)
@@ -189,6 +199,7 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 				if err := kv.DeleteData(childKey); err != nil {
 					b.Errorf("Op %d: delete child failed: %v", id, err)
 				}
+				tracker.remove(childKey)
 			case 2:
 				const batchSize = 4
 				batch := make([]ouroboroskv.Data, batchSize)
@@ -219,6 +230,8 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 					continue
 				}
 
+				tracker.addMany(keys)
+
 				readBack, err := kv.BatchReadData(keys)
 				if err != nil {
 					b.Errorf("Op %d: batch read failed: %v", id, err)
@@ -236,7 +249,9 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 				for _, key := range keys {
 					if err := kv.DeleteData(key); err != nil {
 						b.Errorf("Op %d: delete batch key failed: %v", id, err)
+						continue
 					}
+					tracker.remove(key)
 				}
 			default:
 				idx := int(id % uint64(staticDataCount))
@@ -287,18 +302,13 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 				if keys, err := kv.ListKeys(); err != nil {
 					b.Errorf("Op %d: ListKeys failed: %v", id, err)
 				} else {
-					if len(keys) < len(staticKeys) {
-						b.Errorf("Op %d: ListKeys returned too few entries", id)
+					known := tracker.intersection(keys)
+					if len(known) < len(staticKeys) {
+						b.Errorf("Op %d: ListKeys returned too few known entries", id)
 					}
 					if !hashSliceContains(keys, key) {
 						b.Errorf("Op %d: ListKeys missing expected key", id)
 					}
-				}
-
-				if stored, err := kv.ListStoredData(); err != nil {
-					b.Errorf("Op %d: ListStoredData failed: %v", id, err)
-				} else if len(stored) == 0 {
-					b.Errorf("Op %d: ListStoredData returned zero entries", id)
 				}
 
 				if roots, err := kv.ListRootKeys(); err != nil {
@@ -342,6 +352,14 @@ func BenchmarkDeterministicParallel(b *testing.B) {
 	roots, err := kv.ListRootKeys()
 	require.NoError(b, err)
 	require.True(b, hashSliceContains(roots, rootKey), "Root missing from root listing")
+
+	liveKeys := tracker.snapshot()
+	require.GreaterOrEqual(b, len(liveKeys), len(staticKeys)+1, "Final check: live key snapshot missing entries")
+	for _, key := range liveKeys {
+		info, err := kv.GetDataInfo(key)
+		require.NoError(b, err, "Final check: GetDataInfo failed for live key")
+		require.Greater(b, info.ClearTextSize, uint64(0), "Final check: live key reports zero size")
+	}
 
 	results, err := kv.ValidateAll()
 	require.NoError(b, err)

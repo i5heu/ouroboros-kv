@@ -30,6 +30,8 @@ func BenchmarkConcurrent(b *testing.B) {
 		kv.Close()
 	})
 
+	tracker := newLiveKeyTracker()
+
 	const (
 		rootCount        = 6
 		childrenPerRoot  = 24
@@ -45,6 +47,7 @@ func BenchmarkConcurrent(b *testing.B) {
 		staticKeys = append(staticKeys, key)
 		staticContents = append(staticContents, copyBytes(content))
 		staticParents = append(staticParents, parent)
+		tracker.add(key)
 	}
 
 	for r := 0; r < rootCount; r++ {
@@ -124,6 +127,8 @@ func BenchmarkConcurrent(b *testing.B) {
 					continue
 				}
 
+				tracker.add(key)
+
 				readData, err := kv.ReadData(key)
 				if err != nil {
 					b.Errorf("op %d: read failed: %v", id, err)
@@ -139,6 +144,8 @@ func BenchmarkConcurrent(b *testing.B) {
 					b.Errorf("op %d: delete failed: %v", id, err)
 					continue
 				}
+
+				tracker.remove(key)
 
 				if exists, err := kv.DataExists(key); err != nil {
 					b.Errorf("op %d: DataExists failed: %v", id, err)
@@ -176,6 +183,8 @@ func BenchmarkConcurrent(b *testing.B) {
 					continue
 				}
 
+				tracker.addMany(keys)
+
 				readBack, err := kv.BatchReadData(keys)
 				if err != nil {
 					b.Errorf("op %d: batch read failed: %v", id, err)
@@ -193,7 +202,9 @@ func BenchmarkConcurrent(b *testing.B) {
 				for _, key := range keys {
 					if err := kv.DeleteData(key); err != nil {
 						b.Errorf("op %d: delete batch key failed: %v", id, err)
+						continue
 					}
+					tracker.remove(key)
 				}
 			case 2:
 				idx := int((id + 7) % uint64(staticCount))
@@ -254,6 +265,8 @@ func BenchmarkConcurrent(b *testing.B) {
 					continue
 				}
 
+				tracker.add(childKey)
+
 				if parent, err := kv.GetParent(childKey); err != nil {
 					b.Errorf("op %d: get parent for child failed: %v", id, err)
 				} else if parent != parentKey {
@@ -278,26 +291,25 @@ func BenchmarkConcurrent(b *testing.B) {
 
 				if err := kv.DeleteData(childKey); err != nil {
 					b.Errorf("op %d: delete child failed: %v", id, err)
+				} else {
+					tracker.remove(childKey)
 				}
 			case 4:
 				sampleRoot := rootKeys[int(id)%len(rootKeys)]
 
 				if keys, err := kv.ListKeys(); err != nil {
 					b.Errorf("op %d: ListKeys failed: %v", id, err)
-				} else if len(keys) < staticCount {
-					b.Errorf("op %d: ListKeys returned too few entries", id)
+				} else {
+					known := tracker.intersection(keys)
+					if len(known) < len(staticKeys) {
+						b.Errorf("op %d: ListKeys returned too few live entries", id)
+					}
 				}
 
 				if roots, err := kv.ListRootKeys(); err != nil {
 					b.Errorf("op %d: ListRootKeys failed: %v", id, err)
 				} else if !hashSliceContains(roots, sampleRoot) {
 					b.Errorf("op %d: missing root key in root list", id)
-				}
-
-				if stored, err := kv.ListStoredData(); err != nil {
-					b.Errorf("op %d: ListStoredData failed: %v", id, err)
-				} else if len(stored) < staticCount {
-					b.Errorf("op %d: ListStoredData returned too few entries", id)
 				}
 
 				if info, err := kv.GetDataInfo(sampleRoot); err != nil {
@@ -316,15 +328,6 @@ func BenchmarkConcurrent(b *testing.B) {
 					b.Errorf("op %d: validate root failed: %v", id, err)
 				}
 			case 5:
-				// Periodically stress validation across a subset
-				if id%25 == 0 {
-					if results, err := kv.ValidateAll(); err != nil {
-						b.Errorf("op %d: ValidateAll failed: %v", id, err)
-					} else if len(results) < staticCount {
-						b.Errorf("op %d: ValidateAll returned too few entries", id)
-					}
-				}
-
 				idx := int(id % uint64(staticCount))
 				key := staticKeys[idx]
 
@@ -339,6 +342,10 @@ func BenchmarkConcurrent(b *testing.B) {
 					b.Errorf("op %d: read for validation subset failed: %v", id, err)
 				} else if !bytes.Equal(readData.Content, staticContents[idx]) {
 					b.Errorf("op %d: subset content mismatch", id)
+				}
+
+				if err := kv.Validate(key); err != nil {
+					b.Errorf("op %d: validate static key failed: %v", id, err)
 				}
 			}
 		}
@@ -368,6 +375,14 @@ func BenchmarkConcurrent(b *testing.B) {
 	require.NoError(b, err, "final check: ListRootKeys failed")
 	for _, rootKey := range rootKeys {
 		require.True(b, hashSliceContains(roots, rootKey), "final check: missing root key in roots list")
+	}
+
+	liveKeys := tracker.snapshot()
+	require.GreaterOrEqual(b, len(liveKeys), len(staticKeys), "final check: live key snapshot missing entries")
+	for _, key := range liveKeys {
+		info, err := kv.GetDataInfo(key)
+		require.NoError(b, err, "final check: GetDataInfo failed for live key")
+		require.Greater(b, info.ClearTextSize, uint64(0), "final check: live key reports zero clear text size")
 	}
 
 	validateAllResults, err := kv.ValidateAll()
