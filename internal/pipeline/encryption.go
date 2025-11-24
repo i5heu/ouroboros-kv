@@ -60,7 +60,7 @@ func splitIntoRSSlicesAndEncrypt(rsDataSlices, rsParitySlices uint8, compressedC
 	for i, compressedChunk := range compressedChunks {
 		// Store original compressed size for reconstruction
 		originalSize := uint64(len(compressedChunk))
-		
+
 		// Split compressed chunk into Reed-Solomon slices BEFORE encryption
 		slices, err := enc.Split(compressedChunk)
 		if err != nil {

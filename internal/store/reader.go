@@ -663,7 +663,6 @@ func (k *KV) GetDataInfo(key hash.Hash) (types.DataInfo, error) {
 	return info, nil
 }
 
-
 func (k *KV) decodeDataPipeline(kvDataLinked types.KvData) (types.Data, error) {
 	content, rsData, rsParity, err := pipeline.ReconstructPayload(kvDataLinked.Slices, kvDataLinked.ChunkHashes, k.crypt)
 	if err != nil {
