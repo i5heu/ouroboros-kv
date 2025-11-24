@@ -6,7 +6,6 @@ import (
 	"io"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/i5heu/ouroboros-kv/internal/types"
 	chunker "github.com/ipfs/boxo/chunker"
@@ -51,36 +50,49 @@ func compressWithZstd(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func splitIntoRSSlices(rsDataSlices, rsParitySlices uint8, sealedChunks []*encrypt.EncryptResult, chunkHashes []hash.Hash) ([]types.SealedSlice, error) {
+func splitIntoRSSlicesAndEncrypt(rsDataSlices, rsParitySlices uint8, compressedChunks [][]byte, chunkHashes []hash.Hash, c *crypt.Crypt) ([]types.SealedSlice, error) {
 	enc, err := reedsolomon.New(int(rsDataSlices), int(rsParitySlices))
 	if err != nil {
 		return nil, fmt.Errorf("error creating reed solomon encoder: %w", err)
 	}
 
 	var records []types.SealedSlice
-	for i, sealedChunk := range sealedChunks {
-		originalSize := uint64(len(sealedChunk.Ciphertext))
-		slices, err := enc.Split(sealedChunk.Ciphertext)
+	for i, compressedChunk := range compressedChunks {
+		// Store original compressed size for reconstruction
+		originalSize := uint64(len(compressedChunk))
+		
+		// Split compressed chunk into Reed-Solomon slices BEFORE encryption
+		slices, err := enc.Split(compressedChunk)
 		if err != nil {
-			return nil, fmt.Errorf("error splitting encrypted chunk: %w", err)
+			return nil, fmt.Errorf("error splitting compressed chunk: %w", err)
 		}
 
 		if len(slices) != int(rsDataSlices+rsParitySlices) {
 			return nil, fmt.Errorf("unexpected number of slices: got %d, expected %d", len(slices), rsDataSlices+rsParitySlices)
 		}
 
-		for j, slice := range slices {
+		// Hash the compressed chunk (before RS encoding) for SealedHash
+		compressedHash := hash.HashBytes(compressedChunk)
+
+		// Encrypt each slice individually
+		for j, sliceData := range slices {
+			// Each slice gets its own encryption with unique key/nonce
+			sealedSlice, err := c.Encrypt(sliceData)
+			if err != nil {
+				return nil, fmt.Errorf("error encrypting slice %d: %w", j, err)
+			}
+
 			record := types.SealedSlice{
 				ChunkHash:       chunkHashes[i],
-				SealedHash:      hash.HashBytes(sealedChunk.Ciphertext),
+				SealedHash:      compressedHash,
 				RSDataSlices:    rsDataSlices,
 				RSParitySlices:  rsParitySlices,
 				RSSliceIndex:    uint8(j),
-				Size:            uint64(len(slice)),
+				Size:            uint64(len(sealedSlice.Ciphertext)),
 				OriginalSize:    originalSize,
-				EncapsulatedKey: sealedChunk.EncapsulatedKey,
-				Nonce:           sealedChunk.Nonce,
-				Payload:         slice,
+				EncapsulatedKey: sealedSlice.EncapsulatedKey,
+				Nonce:           sealedSlice.Nonce,
+				Payload:         sealedSlice.Ciphertext,
 			}
 			records = append(records, record)
 		}
@@ -113,16 +125,8 @@ func EncodePayload(payload []byte, rsDataSlices, rsParitySlices uint8, c *crypt.
 		compressedChunks = append(compressedChunks, compressedChunk)
 	}
 
-	var sealedChunks []*encrypt.EncryptResult
-	for _, chunk := range compressedChunks {
-		sealedChunk, err := c.Encrypt(chunk)
-		if err != nil {
-			return nil, nil, err
-		}
-		sealedChunks = append(sealedChunks, sealedChunk)
-	}
-
-	slices, err := splitIntoRSSlices(rsDataSlices, rsParitySlices, sealedChunks, chunkHashes)
+	// Split into RS slices and encrypt each slice (not the chunk)
+	slices, err := splitIntoRSSlicesAndEncrypt(rsDataSlices, rsParitySlices, compressedChunks, chunkHashes, c)
 	if err != nil {
 		return nil, nil, err
 	}

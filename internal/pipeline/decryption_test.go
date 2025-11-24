@@ -7,7 +7,6 @@ import (
 	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
@@ -98,48 +97,41 @@ func TestReedSolomonReconstructor(t *testing.T) {
 	// Let's use the helper to generate valid slices first
 	c := crypt.New()
 
-	// Encrypt a small piece of data
+	// Compress a small piece of data
 	content := []byte("test-content")
-	encrypted, err := c.Encrypt(content)
+	compressed, err := compressWithZstd(content)
 	if err != nil {
-		t.Fatalf("Encrypt failed: %v", err)
+		t.Fatalf("Compress failed: %v", err)
 	}
 
-	// We need to split this manually or use splitIntoRSSlices
-	// Let's use splitIntoRSSlices to get valid SealedSlices
-	encryptedChunks := []*encrypt.EncryptResult{encrypted}
+	// Use splitIntoRSSlicesAndEncrypt to get valid SealedSlices
 	chunkHashes := []hash.Hash{hash.HashBytes(content)}
+	compressedChunks := [][]byte{compressed}
 
-	slices, err := splitIntoRSSlices(dataSlices, paritySlices, encryptedChunks, chunkHashes)
+	slices, err := splitIntoRSSlicesAndEncrypt(dataSlices, paritySlices, compressedChunks, chunkHashes, c)
 	if err != nil {
-		t.Fatalf("splitIntoRSSlices failed: %v", err)
+		t.Fatalf("splitIntoRSSlicesAndEncrypt failed: %v", err)
 	}
 
 	// Now test reedSolomonReconstructor with these slices
-	result, err := reedSolomonReconstructor(slices)
+	result, err := reedSolomonReconstructor(slices, c)
 	if err != nil {
 		t.Fatalf("reedSolomonReconstructor failed: %v", err)
 	}
 
-	if !bytes.Equal(result.Ciphertext, encrypted.Ciphertext) {
-		t.Error("Reconstructed ciphertext does not match original")
-	}
-	if !bytes.Equal(result.EncapsulatedKey, encrypted.EncapsulatedKey) {
-		t.Error("Reconstructed encapsulated key does not match original")
-	}
-	if !bytes.Equal(result.Nonce, encrypted.Nonce) {
-		t.Error("Reconstructed nonce does not match original")
+	if !bytes.Equal(result, compressed) {
+		t.Error("Reconstructed compressed data does not match original")
 	}
 
-	// Test with missing slices
+	// Test with missing slices - RS should be able to reconstruct
 	partialSlices := slices[:dataSlices]
-	resultPartial, err := reedSolomonReconstructor(partialSlices)
+	resultPartial, err := reedSolomonReconstructor(partialSlices, c)
 	if err != nil {
 		t.Fatalf("reedSolomonReconstructor with partial slices failed: %v", err)
 	}
 
-	if !bytes.Equal(resultPartial.Ciphertext, encrypted.Ciphertext) {
-		t.Error("Reconstructed ciphertext from partial slices does not match original")
+	if !bytes.Equal(resultPartial, compressed) {
+		t.Error("Reconstructed compressed data from partial slices does not match original")
 	}
 }
 

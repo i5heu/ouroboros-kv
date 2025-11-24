@@ -7,7 +7,6 @@ import (
 	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/pkg/encrypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/i5heu/ouroboros-kv/internal/types"
 )
@@ -162,15 +161,15 @@ func TestReedSolomonSplitter(t *testing.T) {
 	testData := createTestData()
 	testContent := []byte("test content for reed solomon")
 
-	encryptedChunk, err := c.Encrypt(testContent)
+	compressedChunk, err := compressWithZstd(testContent)
 	if err != nil {
-		t.Fatalf("Failed to encrypt test content: %v", err)
+		t.Fatalf("Failed to compress test content: %v", err)
 	}
 
-	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
+	compressedChunks := [][]byte{compressedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	chunks, err := splitIntoRSSlices(testData.RSDataSlices, testData.RSParitySlices, encryptedChunks, chunkHashes)
+	chunks, err := splitIntoRSSlicesAndEncrypt(testData.RSDataSlices, testData.RSParitySlices, compressedChunks, chunkHashes, c)
 	if err != nil {
 		t.Fatalf("splitIntoRSSlices failed: %v", err)
 	}
@@ -213,15 +212,15 @@ func TestReedSolomonSplitterInvalidSliceConfig(t *testing.T) {
 	testData.RSParitySlices = 1
 
 	testContent := []byte("test content")
-	encryptedChunk, err := c.Encrypt(testContent)
+	compressedChunk, err := compressWithZstd(testContent)
 	if err != nil {
-		t.Fatalf("Failed to encrypt test content: %v", err)
+		t.Fatalf("Failed to compress test content: %v", err)
 	}
 
-	encryptedChunks := []*encrypt.EncryptResult{encryptedChunk}
+	compressedChunks := [][]byte{compressedChunk}
 	chunkHashes := []hash.Hash{hash.HashBytes(testContent)}
 
-	_, err = splitIntoRSSlices(testData.RSDataSlices, testData.RSParitySlices, encryptedChunks, chunkHashes)
+	_, err = splitIntoRSSlicesAndEncrypt(testData.RSDataSlices, testData.RSParitySlices, compressedChunks, chunkHashes, c)
 	if err == nil {
 		t.Error("Expected error for invalid Reed-Solomon configuration, but got none")
 	}

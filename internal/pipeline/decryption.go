@@ -13,7 +13,7 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-func reedSolomonReconstructor(slices []types.SealedSlice) (*encrypt.EncryptResult, error) {
+func reedSolomonReconstructor(slices []types.SealedSlice, c *crypt.Crypt) ([]byte, error) {
 	if len(slices) == 0 {
 		return nil, fmt.Errorf("no slices provided for reconstruction")
 	}
@@ -34,24 +34,28 @@ func reedSolomonReconstructor(slices []types.SealedSlice) (*encrypt.EncryptResul
 		return nil, fmt.Errorf("failed to create Reed-Solomon decoder: %w", err)
 	}
 
-	// Prepare slice matrix - initialize with nil payloads
+	// Prepare slice matrix - decrypt each slice first
 	stripeSlices := make([][]byte, totalSlices)
-	var encapsulatedKey []byte
-	var nonce []byte
 
-	// Fill slice matrix with available slices
+	// Decrypt each slice individually and fill slice matrix
 	for _, slice := range slices {
 		if int(slice.RSSliceIndex) >= totalSlices {
 			return nil, fmt.Errorf("invalid Reed-Solomon index: %d (max %d)", slice.RSSliceIndex, totalSlices-1)
 		}
 
-		stripeSlices[slice.RSSliceIndex] = slice.Payload
-
-		// All slices should have the same encryption metadata
-		if encapsulatedKey == nil {
-			encapsulatedKey = slice.EncapsulatedKey
-			nonce = slice.Nonce
+		// Decrypt this slice using its own key/nonce
+		encryptedSlice := &encrypt.EncryptResult{
+			Ciphertext:      slice.Payload,
+			EncapsulatedKey: slice.EncapsulatedKey,
+			Nonce:           slice.Nonce,
 		}
+
+		decryptedSlice, err := c.Decrypt(encryptedSlice)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt slice %d: %w", slice.RSSliceIndex, err)
+		}
+
+		stripeSlices[slice.RSSliceIndex] = decryptedSlice
 	}
 
 	// Try to reconstruct missing slices
@@ -60,21 +64,17 @@ func reedSolomonReconstructor(slices []types.SealedSlice) (*encrypt.EncryptResul
 		return nil, fmt.Errorf("failed to reconstruct Reed-Solomon slices: %w", err)
 	}
 
-	// Calculate the total expected data size from the original size stored in chunks
+	// Calculate the total expected data size from the original size stored in slices
 	originalSize := int(slices[0].OriginalSize)
 
-	// Use the Reed-Solomon Join method to properly reconstruct the data
+	// Use the Reed-Solomon Join method to properly reconstruct the compressed data
 	var reconstructed bytes.Buffer
 	err = enc.Join(&reconstructed, stripeSlices, originalSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to join Reed-Solomon slices: %w", err)
 	}
 
-	return &encrypt.EncryptResult{
-		Ciphertext:      reconstructed.Bytes(),
-		EncapsulatedKey: encapsulatedKey,
-		Nonce:           nonce,
-	}, nil
+	return reconstructed.Bytes(), nil
 }
 
 func decompressWithZstd(data []byte) ([]byte, error) {
@@ -117,21 +117,19 @@ func ReconstructPayload(slices []types.SealedSlice, hashOrder []hash.Hash, c *cr
 			return nil, 0, 0, fmt.Errorf("missing slice group for hash %x", chunkHash)
 		}
 
-		encryptedChunk, err := reedSolomonReconstructor(stripeSlices)
+		// Reconstruct compressed chunk from decrypted slices
+		compressedChunk, err := reedSolomonReconstructor(stripeSlices, c)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to reconstruct Reed-Solomon chunk: %w", err)
 		}
 
-		decryptedChunk, err := c.Decrypt(encryptedChunk)
-		if err != nil {
-			return nil, 0, 0, fmt.Errorf("failed to decrypt chunk: %w", err)
-		}
-
-		decompressedChunk, err := decompressWithZstd(decryptedChunk)
+		// Decompress the reconstructed chunk
+		decompressedChunk, err := decompressWithZstd(compressedChunk)
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to decompress chunk: %w", err)
 		}
 
+		// Verify chunk hash matches expected plaintext hash
 		actualHash := hash.HashBytes(decompressedChunk)
 		if actualHash != chunkHash {
 			return nil, 0, 0, fmt.Errorf("chunk %d hash mismatch: expected %x, got %x", idx, chunkHash, actualHash)
