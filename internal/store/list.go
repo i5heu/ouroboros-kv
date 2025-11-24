@@ -8,30 +8,16 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	pb "github.com/i5heu/ouroboros-kv/proto"
 	"google.golang.org/protobuf/proto"
 )
 
-// ChunkInfo represents information about a single chunk and its slices
-type ChunkInfo struct {
-	ChunkHash       hash.Hash   // Hash of the original chunk
-	ChunkHashBase64 string      // Base64 encoded chunk hash
-	OriginalSize    uint64      // Size before compression/encryption
-	CompressedSize  uint64      // Size after compression but before Reed-Solomon
-	SliceCount      int         // Number of slices for this chunk
-	SliceDetails    []SliceInfo // Information about each slice
-}
 
-// SliceInfo represents information about a single Reed-Solomon slice
-type SliceInfo struct {
-	Index       uint8  // Reed-Solomon index
-	Size        uint64 // Size of this slice on storage
-	IsDataSlice bool   // True if data slice, false if parity slice
-}
 
 // ListStoredData returns detailed information about all stored data
-func (k *KV) ListStoredData() ([]DataInfo, error) {
-	var dataInfos []DataInfo
+func (k *KV) ListStoredData() ([]types.DataInfo, error) {
+	var dataInfos []types.DataInfo
 
 	// Get all keys
 	keys, err := k.ListKeys()

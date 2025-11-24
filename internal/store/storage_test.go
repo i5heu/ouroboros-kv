@@ -11,6 +11,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 )
 
@@ -48,10 +49,10 @@ func setupTestKVForStorage(t *testing.T) (*KV, func()) {
 }
 
 // createTestStorageData creates test data for storage tests
-func createTestStorageData() Data {
+func createTestStorageData() types.Data {
 	content := []byte("This is test content for storage and retrieval testing. It should be long enough to test the full pipeline.")
 
-	return applyTestDefaults(Data{
+	return applyTestDefaults(types.Data{
 		Meta:           []byte("storage metadata"),
 		Content:        content,
 		Parent:         hash.HashString("parent-storage-key"),
@@ -91,7 +92,7 @@ func TestContentTypeStoredAndRead(t *testing.T) {
 	defer cleanup()
 
 	// Create data with a content type
-	originalData := applyTestDefaults(Data{
+	originalData := applyTestDefaults(types.Data{
 		Meta:           []byte("ct meta"),
 		Content:        []byte("ct content"),
 		Parent:         hash.HashString("parent-ct"),
@@ -142,7 +143,7 @@ func TestKeyDependsOnContentType(t *testing.T) {
 	defer cleanup()
 
 	// Create two data objects with identical content but different content types
-	baseData := applyTestDefaults(Data{
+	baseData := applyTestDefaults(types.Data{
 		Meta:           []byte("ct meta"),
 		Content:        []byte("same content"),
 		Parent:         hash.HashString("parent-ct"),
@@ -253,7 +254,7 @@ func TestWriteReadRoundTrip(t *testing.T) {
 				content[i] = byte(i % 256)
 			}
 
-			originalData := applyTestDefaults(Data{
+			originalData := applyTestDefaults(types.Data{
 				Meta:           []byte("meta-" + tc.name),
 				Content:        content,
 				Parent:         hash.HashString("parent"),
@@ -351,12 +352,12 @@ func TestBatchWriteData(t *testing.T) {
 
 	// Create multiple test data objects
 	var (
-		dataList     []Data
+		dataList     []types.Data
 		expectedKeys []hash.Hash
 	)
 	for i := 0; i < 5; i++ {
 		content := []byte("Batch test content " + string(rune('0'+i)))
-		data := applyTestDefaults(Data{
+		data := applyTestDefaults(types.Data{
 			Content:        content,
 			Parent:         hash.HashString("batch-parent"),
 			Children:       []hash.Hash{},
@@ -398,10 +399,10 @@ func TestBatchReadData(t *testing.T) {
 	defer cleanup()
 
 	// Create and write multiple test data objects
-	var originalDataList []Data
+	var originalDataList []types.Data
 	var keys []hash.Hash
 	for i := 0; i < 3; i++ {
-		data := applyTestDefaults(Data{
+		data := applyTestDefaults(types.Data{
 			Content:        []byte("Batch read test content " + string(rune('0'+i))),
 			Parent:         hash.HashString("batch-read-parent"),
 			Children:       []hash.Hash{},
@@ -453,7 +454,7 @@ func TestListKeys(t *testing.T) {
 	// Write multiple data objects
 	var originalKeys []hash.Hash
 	for i := 0; i < 3; i++ {
-		data := Data{
+		data := types.Data{
 			Content:        []byte("List test content " + string(rune('0'+i))),
 			RSDataSlices:   2,
 			RSParitySlices: 1,
@@ -495,7 +496,7 @@ func TestWriteDataEmptyContent(t *testing.T) {
 	defer cleanup()
 
 	// Test data with empty content
-	testData := applyTestDefaults(Data{
+	testData := applyTestDefaults(types.Data{
 		Content:        []byte{},
 		Parent:         hash.HashString("parent"),
 		Children:       []hash.Hash{},
@@ -529,7 +530,7 @@ func TestBatchWriteEmptyList(t *testing.T) {
 	defer cleanup()
 
 	// Test with empty list
-	keys, err := kv.BatchWriteData([]Data{})
+	keys, err := kv.BatchWriteData([]types.Data{})
 	if err != nil {
 		t.Errorf("BatchWriteData with empty list should not fail: %v", err)
 	}

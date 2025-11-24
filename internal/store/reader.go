@@ -14,31 +14,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// DataInfo represents detailed information about stored data
-type DataInfo struct {
-	Key               hash.Hash   // The data key
-	KeyBase64         string      // Base64 encoded key for display
-	ChunkHashes       []hash.Hash // Hashes of all chunks
-	MetaChunkHashes   []hash.Hash // Hashes of all metadata chunks
-	ClearTextSize     uint64      // Original uncompressed data size
-	StorageSize       uint64      // Total size on storage (sum of all slices)
-	MetaClearTextSize uint64      // Metadata clear text size
-	MetaStorageSize   uint64      // Total metadata storage size
-	NumChunks         int         // Number of logical chunks
-	NumSlices         int         // Total number of Reed-Solomon slices
-	MetaNumChunks     int         // Number of metadata chunks
-	MetaNumSlices     int         // Total number of metadata slices
-	RSDataSlices      uint8       // Data slices per chunk
-	RSParitySlices    uint8       // Parity slices per chunk
-	ChunkDetails      []ChunkInfo // Detailed information per chunk
-	MetaData          []byte      // Decoded metadata payload
-}
-
 // ReadData retrieves and decodes data from the key-value store by its hash key
-func (k *KV) ReadData(key hash.Hash) (Data, error) {
+func (k *KV) ReadData(key hash.Hash) (types.Data, error) {
 	atomic.AddUint64(&k.readCounter, 1)
 
-	var data Data
+	var data types.Data
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
 		canonicalKey := key
 		if resolved, found, err := k.resolveAliasTxn(txn, key); err != nil {
@@ -104,7 +84,7 @@ func (k *KV) ReadData(key hash.Hash) (Data, error) {
 
 	if err != nil {
 		k.log.Error("Failed to read data", "key", fmt.Sprintf("%x", key), "error", err)
-		return Data{}, fmt.Errorf("failed to read data: %w", err)
+		return types.Data{}, fmt.Errorf("failed to read data: %w", err)
 	}
 
 	k.log.Debug("Successfully read data", "key", fmt.Sprintf("%x", key))
@@ -232,16 +212,16 @@ func (k *KV) GetRoots() ([]hash.Hash, error) {
 }
 
 // loadMetadata loads and deserializes KvDataHash metadata from storage
-func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
+func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (types.KvRef, error) {
 	// Create key with metadata prefix
 	metadataKey := fmt.Sprintf("%s%x", METADATA_PREFIX, key)
 
 	item, err := txn.Get([]byte(metadataKey))
 	if err != nil {
 		if err == badger.ErrKeyNotFound {
-			return kvRef{}, fmt.Errorf("metadata not found for key %x", key)
+			return types.KvRef{}, fmt.Errorf("metadata not found for key %x", key)
 		}
-		return kvRef{}, fmt.Errorf("failed to get metadata: %w", err)
+		return types.KvRef{}, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
 	var protoData []byte
@@ -250,18 +230,18 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
 		return nil
 	})
 	if err != nil {
-		return kvRef{}, fmt.Errorf("failed to read metadata value: %w", err)
+		return types.KvRef{}, fmt.Errorf("failed to read metadata value: %w", err)
 	}
 
 	// Deserialize protobuf
 	protoMetadata := &pb.KvDataHashProto{}
 	err = proto.Unmarshal(protoData, protoMetadata)
 	if err != nil {
-		return kvRef{}, fmt.Errorf("failed to unmarshal metadata for %x (len %d): %w", key, len(protoData), err)
+		return types.KvRef{}, fmt.Errorf("failed to unmarshal metadata for %x (len %d): %w", key, len(protoData), err)
 	}
 
 	// Convert back to Go struct
-	metadata := kvRef{
+	metadata := types.KvRef{
 		Key:     key, // We already know the key
 		Created: protoMetadata.Created,
 	}
@@ -297,16 +277,16 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
 			return nil
 		})
 		if err != nil {
-			return kvRef{}, fmt.Errorf("failed to read metadata chunk hashes: %w", err)
+			return types.KvRef{}, fmt.Errorf("failed to read metadata chunk hashes: %w", err)
 		}
 
 		hashes, err := deserializeHashesFromBytes(raw)
 		if err != nil {
-			return kvRef{}, fmt.Errorf("failed to parse metadata chunk hashes: %w", err)
+			return types.KvRef{}, fmt.Errorf("failed to parse metadata chunk hashes: %w", err)
 		}
 		metadata.MetaChunkHashes = hashes
 	} else if err != badger.ErrKeyNotFound {
-		return kvRef{}, fmt.Errorf("failed to load metadata chunk hashes: %w", err)
+		return types.KvRef{}, fmt.Errorf("failed to load metadata chunk hashes: %w", err)
 	}
 
 	// Load content type if present (stored with suffix :ct)
@@ -319,11 +299,11 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (kvRef, error) {
 			return nil
 		})
 		if err != nil {
-			return kvRef{}, fmt.Errorf("failed to read content type for key %x: %w", key, err)
+			return types.KvRef{}, fmt.Errorf("failed to read content type for key %x: %w", key, err)
 		}
 		metadata.ContentType = string(val)
 	} else if err != badger.ErrKeyNotFound {
-		return kvRef{}, fmt.Errorf("failed to load content type: %w", err)
+		return types.KvRef{}, fmt.Errorf("failed to load content type: %w", err)
 	}
 
 	return metadata, nil
@@ -422,14 +402,14 @@ func collectChildrenForTxn(txn *badger.Txn, parentKey hash.Hash) ([]hash.Hash, e
 }
 
 // BatchReadData reads multiple data objects by their keys
-func (k *KV) BatchReadData(keys []hash.Hash) ([]Data, error) {
+func (k *KV) BatchReadData(keys []hash.Hash) ([]types.Data, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
 
 	atomic.AddUint64(&k.readCounter, uint64(len(keys)))
 
-	var results []Data
+	var results []types.Data
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
 		for _, key := range keys {
 			canonicalKey := key
@@ -550,10 +530,10 @@ func (k *KV) DataExists(key hash.Hash) (bool, error) {
 }
 
 // GetDataInfo returns detailed information about a specific data entry
-func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
+func (k *KV) GetDataInfo(key hash.Hash) (types.DataInfo, error) {
 	atomic.AddUint64(&k.readCounter, 1)
 
-	var info DataInfo
+	var info types.DataInfo
 
 	err := k.badgerDB.View(func(txn *badger.Txn) error {
 		// Load metadata
@@ -618,7 +598,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 			}
 
 			// Create chunk info
-			chunkInfo := ChunkInfo{
+			chunkInfo := types.ChunkInfo{
 				ChunkHash:       chunkHash,
 				ChunkHashBase64: base64.StdEncoding.EncodeToString(chunkHash[:]),
 				OriginalSize:    firstSlice.OriginalSize,
@@ -630,7 +610,7 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 
 			// Process each slice
 			for _, slice := range slices {
-				sliceInfo := SliceInfo{
+				sliceInfo := types.SliceInfo{
 					Index:       slice.RSSliceIndex,
 					Size:        slice.Size,
 					IsDataSlice: slice.RSSliceIndex < firstSlice.RSDataSlices,
@@ -677,59 +657,25 @@ func (k *KV) GetDataInfo(key hash.Hash) (DataInfo, error) {
 	})
 
 	if err != nil {
-		return DataInfo{}, err
+		return types.DataInfo{}, err
 	}
 
 	return info, nil
 }
 
-// FormatDataInfo returns a human-readable string representation of DataInfo
-func (info DataInfo) FormatDataInfo() string {
-	output := fmt.Sprintf("Data Key: %s\n", info.KeyBase64)
-	output += fmt.Sprintf("Clear Text Size: %s (%d bytes)\n", formatBytes(info.ClearTextSize), info.ClearTextSize)
-	output += fmt.Sprintf("Storage Size: %s (%d bytes)\n", formatBytes(info.StorageSize), info.StorageSize)
-	output += fmt.Sprintf("Compression Ratio: %.2fx\n", float64(info.StorageSize)/float64(info.ClearTextSize))
-	output += fmt.Sprintf("Chunks: %d, Total Slices: %d\n", info.NumChunks, info.NumSlices)
-	if info.MetaNumChunks > 0 {
-		output += fmt.Sprintf("Metadata Size: %s (%d bytes)\n", formatBytes(info.MetaClearTextSize), info.MetaClearTextSize)
-		output += fmt.Sprintf("Metadata Storage Size: %s (%d bytes)\n", formatBytes(info.MetaStorageSize), info.MetaStorageSize)
-		output += fmt.Sprintf("Metadata Chunks: %d, Metadata Slices: %d\n", info.MetaNumChunks, info.MetaNumSlices)
-	}
-	output += fmt.Sprintf("Reed-Solomon Config: %d data + %d parity slices per chunk\n\n",
-		info.RSDataSlices, info.RSParitySlices)
 
-	for i, chunk := range info.ChunkDetails {
-		output += fmt.Sprintf("  Chunk %d:\n", i+1)
-		output += fmt.Sprintf("    Hash: %s\n", chunk.ChunkHashBase64)
-		output += fmt.Sprintf("    Original Size: %s (%d bytes)\n", formatBytes(chunk.OriginalSize), chunk.OriginalSize)
-		output += fmt.Sprintf("    Slices: %d\n", chunk.SliceCount)
-
-		for _, slice := range chunk.SliceDetails {
-			sliceType := "data"
-			if !slice.IsDataSlice {
-				sliceType = "parity"
-			}
-			output += fmt.Sprintf("      Slice %d (%s): %s (%d bytes)\n",
-				slice.Index, sliceType, formatBytes(slice.Size), slice.Size)
-		}
-		output += "\n"
-	}
-
-	return output
-}
-
-func (k *KV) decodeDataPipeline(kvDataLinked types.KvData) (Data, error) {
+func (k *KV) decodeDataPipeline(kvDataLinked types.KvData) (types.Data, error) {
 	content, rsData, rsParity, err := pipeline.ReconstructPayload(kvDataLinked.Slices, kvDataLinked.ChunkHashes, k.crypt)
 	if err != nil {
-		return Data{}, err
+		return types.Data{}, err
 	}
 
 	metadata, _, _, err := pipeline.ReconstructPayload(kvDataLinked.MetaSlices, kvDataLinked.MetaChunkHashes, k.crypt)
 	if err != nil {
-		return Data{}, err
+		return types.Data{}, err
 	}
 
-	return Data{
+	return types.Data{
 		Key:            kvDataLinked.Key,
 		Meta:           metadata,
 		Content:        content,

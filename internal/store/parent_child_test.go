@@ -8,6 +8,7 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,28 +51,28 @@ func TestParentChildRelationships(t *testing.T) {
 	defer cleanup()
 
 	// Create test data with relationships
-	parentData := applyTestDefaults(Data{
+	parentData := applyTestDefaults(types.Data{
 		Meta:           []byte("parent metadata"),
 		Content:        []byte("I am the parent"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	})
 
-	child1Data := applyTestDefaults(Data{
+	child1Data := applyTestDefaults(types.Data{
 		Meta:           []byte("child1 metadata"),
 		Content:        []byte("I am child 1"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	})
 
-	child2Data := applyTestDefaults(Data{
+	child2Data := applyTestDefaults(types.Data{
 		Meta:           []byte("child2 metadata"),
 		Content:        []byte("I am child 2"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
 	})
 
-	grandchildData := applyTestDefaults(Data{
+	grandchildData := applyTestDefaults(types.Data{
 		Meta:           []byte("grandchild metadata"),
 		Content:        []byte("I am a grandchild"),
 		RSDataSlices:   3,
@@ -183,7 +184,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 	defer cleanup()
 
 	// Create test data
-	parentData := applyTestDefaults(Data{
+	parentData := applyTestDefaults(types.Data{
 		Meta:           []byte("batch parent metadata"),
 		Content:        []byte("Batch parent"),
 		RSDataSlices:   3,
@@ -192,7 +193,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 
 	parentKey := expectedKeyForData(parentData)
 
-	child1Data := applyTestDefaults(Data{
+	child1Data := applyTestDefaults(types.Data{
 		Meta:           []byte("batch child1 metadata"),
 		Content:        []byte("Batch child 1"),
 		Parent:         parentKey,
@@ -200,7 +201,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 		RSParitySlices: 2,
 	})
 
-	child2Data := applyTestDefaults(Data{
+	child2Data := applyTestDefaults(types.Data{
 		Meta:           []byte("batch child2 metadata"),
 		Content:        []byte("Batch child 2"),
 		Parent:         parentKey,
@@ -209,7 +210,7 @@ func TestBatchWriteWithRelationships(t *testing.T) {
 	})
 
 	// Batch write all data
-	dataList := []Data{parentData, child1Data, child2Data}
+	dataList := []types.Data{parentData, child1Data, child2Data}
 	keys, err := kv.BatchWriteData(dataList)
 	require.NoError(t, err)
 	require.Len(t, keys, len(dataList))
@@ -240,7 +241,7 @@ func TestListRootKeys(t *testing.T) {
 	kv, cleanup := setupTestKVForParentChild(t)
 	defer cleanup()
 
-	root1Data := applyTestDefaults(Data{
+	root1Data := applyTestDefaults(types.Data{
 		Content:        []byte("Root 1"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
@@ -248,7 +249,7 @@ func TestListRootKeys(t *testing.T) {
 	root1Key, err := kv.WriteData(root1Data)
 	require.NoError(t, err)
 
-	root2Data := applyTestDefaults(Data{
+	root2Data := applyTestDefaults(types.Data{
 		Content:        []byte("Root 2"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
@@ -256,7 +257,7 @@ func TestListRootKeys(t *testing.T) {
 	root2Key, err := kv.WriteData(root2Data)
 	require.NoError(t, err)
 
-	childData := applyTestDefaults(Data{
+	childData := applyTestDefaults(types.Data{
 		Content:        []byte("Child of root 1"),
 		Parent:         root1Key,
 		RSDataSlices:   3,

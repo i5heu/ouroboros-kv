@@ -8,6 +8,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 )
 
@@ -295,7 +296,7 @@ func TestDeleteRelationshipEntriesViaDeleteData(t *testing.T) {
 	defer cleanup()
 
 	// Create parent data
-	parentData := Data{
+	parentData := types.Data{
 		Content:        []byte("parent content"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
@@ -306,7 +307,7 @@ func TestDeleteRelationshipEntriesViaDeleteData(t *testing.T) {
 	}
 
 	// Create child data with parent reference
-	childData := Data{
+	childData := types.Data{
 		Content:        []byte("child content"),
 		Parent:         parentKey,
 		RSDataSlices:   3,
@@ -365,7 +366,7 @@ func TestDeleteRelationshipEntriesChain(t *testing.T) {
 	defer cleanup()
 
 	// Create a chain: grandparent -> parent -> child
-	grandparentData := Data{
+	grandparentData := types.Data{
 		Content:        []byte("grandparent"),
 		RSDataSlices:   3,
 		RSParitySlices: 2,
@@ -375,7 +376,7 @@ func TestDeleteRelationshipEntriesChain(t *testing.T) {
 		t.Fatalf("Failed to write grandparent: %v", err)
 	}
 
-	parentData := Data{
+	parentData := types.Data{
 		Content:        []byte("parent"),
 		Parent:         grandparentKey,
 		RSDataSlices:   3,
@@ -386,7 +387,7 @@ func TestDeleteRelationshipEntriesChain(t *testing.T) {
 		t.Fatalf("Failed to write parent: %v", err)
 	}
 
-	childData := Data{
+	childData := types.Data{
 		Content:        []byte("child"),
 		Parent:         parentKey,
 		RSDataSlices:   3,

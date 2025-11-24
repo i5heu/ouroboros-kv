@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 )
 
 func (k *KV) StartTransactionCounter(paths []string, minimumFreeSpace int) {
@@ -55,7 +56,7 @@ func deserializeHashesFromBytes(data []byte) ([]hash.Hash, error) {
 	return hashes, nil
 }
 
-func computeDataKey(data Data) hash.Hash {
+func computeDataKey(data types.Data) hash.Hash {
 	return hash.HashBytes(canonicalDataKeyPayload(data))
 }
 

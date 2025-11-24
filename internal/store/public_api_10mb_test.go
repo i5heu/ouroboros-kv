@@ -10,6 +10,7 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 )
 
@@ -41,7 +42,7 @@ func TestPublicAPI10MB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data := Data{
+	data := types.Data{
 		Content:        originalData,
 		Meta:           []byte("test-metadata"),
 		Parent:         hash.Hash{},

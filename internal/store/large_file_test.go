@@ -12,6 +12,7 @@ import (
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,7 +62,7 @@ func TestLargeFileRoundTrip(t *testing.T) {
 			// Create Data structure
 			metadata := []byte(fmt.Sprintf("metadata-%s", tc.name))
 
-			data := applyTestDefaults(Data{
+			data := applyTestDefaults(types.Data{
 				Content:        originalData,
 				Meta:           metadata,
 				Parent:         hash.Hash{},   // Empty parent
@@ -169,7 +170,7 @@ func TestEncodingDecodingPipelineWithLargeFiles(t *testing.T) {
 			require.NoError(t, err)
 
 			// Create Data structure
-			data := applyTestDefaults(Data{
+			data := applyTestDefaults(types.Data{
 				Meta:           []byte(fmt.Sprintf("metadata-%s", tc.name)),
 				Content:        originalData,
 				Parent:         hash.Hash{},
@@ -284,7 +285,7 @@ func TestVirtualFileStorageWithCLI(t *testing.T) {
 			content, err := os.ReadFile(virtualFile)
 			require.NoError(t, err)
 
-			data := applyTestDefaults(Data{
+			data := applyTestDefaults(types.Data{
 				Content:        content,
 				Parent:         hash.Hash{},
 				Children:       []hash.Hash{},

@@ -7,7 +7,6 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
-	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/i5heu/ouroboros-kv/pkg/spaceInformations"
 )
@@ -19,40 +18,6 @@ type KV struct {
 	readCounter  uint64
 	writeCounter uint64
 	log          *slog.Logger
-}
-
-// Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
-type Data struct {
-	Key hash.Hash // Key is derived from all fields except Children; must be zero when writing new data because it is generated from the content
-	// Part of the key hash:
-	Content        []byte    // The actual content of the data (stored encrypted)
-	Parent         hash.Hash // Key of the parent value
-	Created        int64     // Unix timestamp when the data was created
-	RSDataSlices   uint8     // Number of Reed-Solomon data slices per stripe (RSDataSlices + RSParitySlices = total slices)
-	RSParitySlices uint8     // Number of Reed-Solomon parity slices per stripe (RSDataSlices + RSParitySlices = total slices)
-	ContentType    string    // ContentType type of the content (not encrypted and is part of the key hash)
-	// Not part of the key hash:
-	Children []hash.Hash // Keys of the child values (stored dynamically and not part of the key hash)
-	Meta     []byte      // Dynamic additional metadata (stored encrypted but not part of the key hash) for embeddings, labels, etc.
-	Aliases  []hash.Hash // Aliases for the data (not part of the key hash)
-	// UnencryptedSystemData []UnencryptedSystemData // Unencrypted system data associated (not part of the key hash and not encrypted but very fast to read and write) for stats, distribution info, etc.
-}
-
-// Unencrypted system data associated (not part of the key hash and not encrypted but very fast to read and write) for stats, distribution info, etc.
-// type UnencryptedSystemData struct {
-// 	Type string // Type of system data (e.g., "config", "stats")
-// 	Data []byte // Raw system data payload
-// }
-
-// kvRef represents the `Data` structure stored in the key-value store, with chunk hashes instead of full content.
-type kvRef struct {
-	Key             hash.Hash
-	ChunkHashes     []hash.Hash // Hash of deduplicated chunks
-	MetaChunkHashes []hash.Hash // Hash of metadata chunks
-	Parent          hash.Hash   // Key of the parent chunk
-	Created         int64       // Unix timestamp when the data was created
-	Aliases         []hash.Hash // Aliases for the data
-	ContentType     string      // ContentType type of the content (stored with ref for quick access)
 }
 
 // Close closes the BadgerDB instance

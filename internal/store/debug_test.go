@@ -10,6 +10,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +37,7 @@ func TestDebugParentChildStorage(t *testing.T) {
 	defer kv.badgerDB.Close()
 
 	// Create simple test data
-	parentData := Data{
+	parentData := types.Data{
 		Meta:           []byte("debug parent metadata"),
 		Content:        []byte("I am the parent"),
 		RSDataSlices:   3,
@@ -48,7 +49,7 @@ func TestDebugParentChildStorage(t *testing.T) {
 	require.NoError(t, err)
 	fmt.Printf("Storing parent with key: %x\n", parentKey)
 
-	childData := Data{
+	childData := types.Data{
 		Meta:           []byte("debug child metadata"),
 		Content:        []byte("I am child"),
 		Parent:         parentKey,

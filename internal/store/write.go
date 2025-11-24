@@ -26,7 +26,7 @@ const (
 
 // WriteData encodes and stores the given Data in the key-value store
 // It uses the encoding pipeline to create encrypted, compressed, and erasure-coded chunks
-func (k *KV) WriteData(data Data) (hash.Hash, error) {
+func (k *KV) WriteData(data types.Data) (hash.Hash, error) {
 	atomic.AddUint64(&k.writeCounter, 1)
 
 	if !isEmptyHash(data.Key) {
@@ -72,7 +72,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 		metaSliceMap[slice.ChunkHash] = append(metaSliceMap[slice.ChunkHash], slice)
 	}
 
-	metadata := kvRef{
+	metadata := types.KvRef{
 		Key:             encoded.Key,
 		ChunkHashes:     contentHashes,
 		MetaChunkHashes: metaHashes,
@@ -162,7 +162,7 @@ func (k *KV) WriteData(data Data) (hash.Hash, error) {
 }
 
 // storeMetadata serializes and stores KvDataHash metadata
-func (k *KV) storeMetadata(txn *badger.Txn, metadata kvRef) error {
+func (k *KV) storeMetadata(txn *badger.Txn, metadata types.KvRef) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
 		Key:     metadata.Key[:],
@@ -192,7 +192,7 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata kvRef) error {
 }
 
 // store a content type value separately with suffix :ct
-func (k *KV) storeContentTypeTxn(txn *badger.Txn, metadata kvRef) error {
+func (k *KV) storeContentTypeTxn(txn *badger.Txn, metadata types.KvRef) error {
 	if metadata.ContentType == "" {
 		return nil
 	}
@@ -230,7 +230,7 @@ func (k *KV) storeSlice(txn *badger.Txn, slice types.SealedSlice) error {
 }
 
 // storeMetadataWithBatch serializes and stores KvDataHash metadata using WriteBatch
-func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvRef) error {
+func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata types.KvRef) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
 		Key:     metadata.Key[:],
@@ -260,7 +260,7 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata kvRef) error
 }
 
 // store content type with WriteBatch, if present
-func (k *KV) storeContentTypeWithBatch(wb *badger.WriteBatch, metadata kvRef) error {
+func (k *KV) storeContentTypeWithBatch(wb *badger.WriteBatch, metadata types.KvRef) error {
 	if metadata.ContentType == "" {
 		return nil
 	}
@@ -382,7 +382,7 @@ func isEmptyHash(h hash.Hash) bool {
 	return h == empty
 }
 
-func canonicalDataKeyPayload(data Data) []byte {
+func canonicalDataKeyPayload(data types.Data) []byte {
 	var buf bytes.Buffer
 	writeBytesWithLength(&buf, data.Meta)
 	writeBytesWithLength(&buf, data.Content)
@@ -416,7 +416,7 @@ func writeBytesWithLength(buf *bytes.Buffer, payload []byte) {
 }
 
 // BatchWriteData writes multiple Data objects in a single batch operation
-func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
+func (k *KV) BatchWriteData(dataList []types.Data) ([]hash.Hash, error) {
 	if len(dataList) == 0 {
 		return []hash.Hash{}, nil
 	}
@@ -425,7 +425,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 
 	// Process all data through encoding pipeline first
 	var (
-		allMetadata      []kvRef
+		allMetadata      []types.KvRef
 		allSlices        []types.SealedSlice
 		metadataChildren [][]hash.Hash
 		canonicalKeys    []hash.Hash
@@ -470,7 +470,7 @@ func (k *KV) BatchWriteData(dataList []Data) ([]hash.Hash, error) {
 			allSlices = append(allSlices, slice)
 		}
 
-		metadata := kvRef{
+		metadata := types.KvRef{
 			Key:             encoded.Key,
 			ChunkHashes:     contentHashes,
 			MetaChunkHashes: metaHashes,
@@ -605,7 +605,7 @@ func (k *KV) storeParentChildRelationshipsTxn(txn *badger.Txn, dataKey, parent h
 	return nil
 }
 
-func (k *KV) encodeDataPipeline(data Data) (types.KvData, error) {
+func (k *KV) encodeDataPipeline(data types.Data) (types.KvData, error) {
 	contentSlices, contentHashes, err := pipeline.EncodePayload(data.Content, data.RSDataSlices, data.RSParitySlices, k.crypt)
 	if err != nil {
 		return types.KvData{}, err

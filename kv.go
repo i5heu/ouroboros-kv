@@ -8,14 +8,15 @@ import (
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 	"github.com/i5heu/ouroboros-kv/internal/store"
+	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 )
 
 var log *slog.Logger
 
 type Config = config.Config
-type Data = store.Data
-type DataInfo = store.DataInfo
+type Data = types.Data
+type DataInfo = types.DataInfo
 type ValidationResult = store.ValidationResult
 type Hash = hash.Hash
 
@@ -24,16 +25,16 @@ type Hash = hash.Hash
 // Store Interface Version 1.0.0 of ouroboros-kv.
 type Store interface {
 	// WriteData stores the provided Data and returns the computed data hash.
-	WriteData(data Data) (Hash, error)
+	WriteData(data types.Data) (Hash, error)
 
 	// BatchWriteData stores multiple Data entries in a single batch and returns their keys.
-	BatchWriteData(dataList []Data) ([]Hash, error)
+	BatchWriteData(dataList []types.Data) ([]Hash, error)
 
 	// ReadData reads a Data entry by its key and returns the Data.
 	ReadData(key Hash) (Data, error)
 
 	// BatchReadData reads multiple Data entries by their keys and returns the list of Data.
-	BatchReadData(keys []Hash) ([]Data, error)
+	BatchReadData(keys []Hash) ([]types.Data, error)
 
 	// DeleteData removes the given data (by key) and associated slices/metadata.
 	DeleteData(key Hash) error
@@ -66,7 +67,7 @@ type Store interface {
 	GetDataInfo(key Hash) (DataInfo, error)
 
 	// ListStoredData returns DataInfo for every stored entry.
-	ListStoredData() ([]DataInfo, error)
+	ListStoredData() ([]types.DataInfo, error)
 
 	// Validate verifies the data consistency for the given key.
 	Validate(key Hash) error
