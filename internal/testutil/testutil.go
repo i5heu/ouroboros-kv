@@ -13,3 +13,7 @@ func RequireLong(t *testing.T) {
 		t.Skip("skipping long test (use -long to enable)")
 	}
 }
+
+func IsLongEnabled() bool {
+	return *RunLong
+}

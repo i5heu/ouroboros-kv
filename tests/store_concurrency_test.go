@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/i5heu/ouroboros-kv/internal/testutil"
 	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
@@ -39,6 +40,12 @@ func TestConcurrentWrites(t *testing.T) {
 
 	numGoroutines := 10
 	writesPerGoroutine := 50
+
+	if testutil.IsLongEnabled() {
+		numGoroutines = 100
+		writesPerGoroutine = 2000
+	}
+
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines*writesPerGoroutine)
 
@@ -82,6 +89,11 @@ func TestConcurrentWritesSameData(t *testing.T) {
 	defer cleanup()
 
 	numGoroutines := 20
+
+	if testutil.IsLongEnabled() {
+		numGoroutines = 100
+	}
+
 	content := []byte("identical-content-for-all-goroutines")
 	var wg sync.WaitGroup
 	keys := make(chan ouroboroskv.Hash, numGoroutines)
@@ -145,6 +157,11 @@ func TestConcurrentReadsWhileWriting(t *testing.T) {
 
 	// Pre-populate some data
 	numKeys := 20
+
+	if testutil.IsLongEnabled() {
+		numKeys = 1000
+	}
+
 	keys := make([]ouroboroskv.Hash, numKeys)
 	expectedContent := make([][]byte, numKeys)
 
@@ -244,6 +261,11 @@ func TestConcurrentDeletes(t *testing.T) {
 
 	// Create data to delete
 	numItems := 50
+
+	if testutil.IsLongEnabled() {
+		numItems = 500
+	}
+
 	keys := make([]ouroboroskv.Hash, numItems)
 
 	for i := 0; i < numItems; i++ {
@@ -313,6 +335,11 @@ func TestConcurrentParentChildUpdates(t *testing.T) {
 
 	// Create children concurrently
 	numChildren := 30
+
+	if testutil.IsLongEnabled() {
+		numChildren = 300
+	}
+
 	var wg sync.WaitGroup
 	childKeys := make(chan ouroboroskv.Hash, numChildren)
 	errors := make(chan error, numChildren)
@@ -393,6 +420,11 @@ func TestConcurrentDeleteWithReads(t *testing.T) {
 
 	// Start readers
 	numReaders := 10
+
+	if testutil.IsLongEnabled() {
+		numReaders = 50
+	}
+
 	for i := 0; i < numReaders; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -452,6 +484,12 @@ func TestConcurrentBatchWrites(t *testing.T) {
 
 	numGoroutines := 5
 	itemsPerBatch := 20
+
+	if testutil.IsLongEnabled() {
+		numGoroutines = 50
+		itemsPerBatch = 100
+	}
+
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines)
 
@@ -511,8 +549,13 @@ func TestRaceDetectorParentChild(t *testing.T) {
 
 	var wg sync.WaitGroup
 
+	numChildren := 10
+	if testutil.IsLongEnabled() {
+		numChildren = 300
+	}
+
 	// Concurrent child creation
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numChildren; i++ {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
@@ -526,8 +569,13 @@ func TestRaceDetectorParentChild(t *testing.T) {
 		}(i)
 	}
 
+	concurrentReads := 10
+	if testutil.IsLongEnabled() {
+		concurrentReads = 100
+	}
+
 	// Concurrent reads of parent relationships
-	for i := 0; i < 5; i++ {
+	for i := 0; i < concurrentReads; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
