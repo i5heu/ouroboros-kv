@@ -1,15 +1,15 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"testing"
-
-	_ "github.com/i5heu/ouroboros-kv/internal/testutil"
 
 	"log/slog"
 
 	crypt "github.com/i5heu/ouroboros-crypt"
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
+	"github.com/i5heu/ouroboros-kv/internal/testutil"
 	"github.com/i5heu/ouroboros-kv/internal/types"
 	"github.com/i5heu/ouroboros-kv/pkg/config"
 	"github.com/stretchr/testify/assert"
@@ -272,4 +272,86 @@ func TestListRootKeys(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, roots, 2)
 	assert.ElementsMatch(t, []hash.Hash{root1Key, root2Key}, roots)
+}
+
+func TestDeleteDataLeavesNoRelationshipResidue(t *testing.T) {
+	kv, cleanup := setupTestKVForParentChild(t)
+	defer cleanup()
+
+	cycles := 5
+	childrenPerParent := 3
+	grandchildrenPerChild := 2
+	if testutil.IsLongEnabled() {
+		cycles = 100
+		childrenPerParent = 10
+		grandchildrenPerChild = 10
+	}
+
+	for cycle := 0; cycle < cycles; cycle++ {
+		parentLabel := fmt.Sprintf("cycle-%d-parent", cycle)
+		parentKey := writeRelationshipData(t, kv, parentLabel, hash.Hash{})
+
+		childKeys := make([]hash.Hash, 0, childrenPerParent)
+		grandchildren := make(map[hash.Hash][]hash.Hash)
+
+		for childIdx := 0; childIdx < childrenPerParent; childIdx++ {
+			childLabel := fmt.Sprintf("%s-child-%d", parentLabel, childIdx)
+			childKey := writeRelationshipData(t, kv, childLabel, parentKey)
+			childKeys = append(childKeys, childKey)
+
+			for grandIdx := 0; grandIdx < grandchildrenPerChild; grandIdx++ {
+				gcLabel := fmt.Sprintf("%s-grandchild-%d", childLabel, grandIdx)
+				gcKey := writeRelationshipData(t, kv, gcLabel, childKey)
+				grandchildren[childKey] = append(grandchildren[childKey], gcKey)
+			}
+		}
+
+		expectedEdges := childrenPerParent + childrenPerParent*grandchildrenPerChild
+		assertRelationshipCounts(t, kv, expectedEdges, expectedEdges, "cycle %d after writes", cycle)
+
+		require.NoErrorf(t, kv.DeleteData(parentKey), "cycle %d: delete parent", cycle)
+		expectedEdges -= childrenPerParent
+		assertRelationshipCounts(t, kv, expectedEdges, expectedEdges, "cycle %d after parent delete", cycle)
+
+		for _, childKey := range childKeys {
+			require.NoErrorf(t, kv.DeleteData(childKey), "cycle %d: delete child", cycle)
+			expectedEdges -= grandchildrenPerChild
+			assertRelationshipCounts(t, kv, expectedEdges, expectedEdges, "cycle %d after child delete", cycle)
+			for _, gcKey := range grandchildren[childKey] {
+				require.NoErrorf(t, kv.DeleteData(gcKey), "cycle %d: delete grandchild", cycle)
+			}
+		}
+
+		assertRelationshipCounts(t, kv, 0, 0, "cycle %d final", cycle)
+
+		keys, err := kv.ListKeys()
+		require.NoErrorf(t, err, "cycle %d: list keys", cycle)
+		if len(keys) != 0 {
+			t.Fatalf("cycle %d: expected empty store, found %d keys", cycle, len(keys))
+		}
+	}
+}
+
+func writeRelationshipData(t *testing.T, kv *KV, label string, parent hash.Hash) hash.Hash {
+	t.Helper()
+
+	data := applyTestDefaults(types.Data{
+		Content:        []byte("rel-content-" + label),
+		Meta:           []byte("rel-meta-" + label),
+		Parent:         parent,
+		RSDataSlices:   3,
+		RSParitySlices: 2,
+	})
+
+	key, err := kv.WriteData(data)
+	require.NoErrorf(t, err, "WriteData(%s)", label)
+	return key
+}
+
+func assertRelationshipCounts(t *testing.T, kv *KV, expectedParent, expectedChild int, context string, args ...interface{}) {
+	t.Helper()
+	parentCount, childCount, err := kv.InspectRelationshipCounts()
+	require.NoError(t, err)
+	require.Equalf(t, expectedParent, parentCount, "parent entries mismatch %s", fmt.Sprintf(context, args...))
+	require.Equalf(t, expectedChild, childCount, "child entries mismatch %s", fmt.Sprintf(context, args...))
 }
