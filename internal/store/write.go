@@ -33,8 +33,21 @@ func (k *KV) WriteData(data types.Data) (hash.Hash, error) {
 		return hash.Hash{}, fmt.Errorf("data key must be zero value; it will be generated from content")
 	}
 
+	if len(data.Branches) > 0 {
+		if data.VersionID != 0 || !isEmptyHash(data.PrevVersionHash) {
+			return hash.Hash{}, fmt.Errorf("branches can only be set on original versions (VersionID=0, no previous version)")
+		}
+	}
+
 	if data.Created == 0 {
 		data.Created = time.Now().Unix()
+	}
+	if data.VersionID == 0 {
+		if isEmptyHash(data.PrevVersionHash) {
+			data.VersionID = 0 // Original version
+		} else {
+			data.VersionID = time.Now().UnixMilli()
+		}
 	}
 
 	data.Key = computeDataKey(data) // Calculate the key hash from all relevant fields
@@ -77,9 +90,13 @@ func (k *KV) WriteData(data types.Data) (hash.Hash, error) {
 		ChunkHashes:     contentHashes,
 		MetaChunkHashes: metaHashes,
 		Parent:          encoded.Parent,
+		PrevVersionHash: encoded.PrevVersionHash,
 		Created:         encoded.Created,
+		VersionID:       encoded.VersionID,
+		PrevVersionID:   encoded.PrevVersionID,
 		Aliases:         encoded.Aliases,
 		ContentType:     data.ContentType,
+		Branches:        encoded.Branches,
 	}
 
 	// Use WriteBatch for better handling of large transactions
@@ -165,9 +182,12 @@ func (k *KV) WriteData(data types.Data) (hash.Hash, error) {
 func (k *KV) storeMetadata(txn *badger.Txn, metadata types.KvRef) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
-		Key:     metadata.Key[:],
-		Parent:  metadata.Parent[:],
-		Created: metadata.Created,
+		Key:             metadata.Key[:],
+		Parent:          metadata.Parent[:],
+		Created:         metadata.Created,
+		PrevVersionHash: metadata.PrevVersionHash[:],
+		VersionId:       metadata.VersionID,
+		PrevVersionId:   metadata.PrevVersionID,
 	}
 
 	// Convert chunk hashes
@@ -177,6 +197,10 @@ func (k *KV) storeMetadata(txn *badger.Txn, metadata types.KvRef) error {
 
 	for _, alias := range metadata.Aliases {
 		protoMetadata.Aliases = append(protoMetadata.Aliases, alias[:])
+	}
+
+	for _, br := range metadata.Branches {
+		protoMetadata.Branches = append(protoMetadata.Branches, &pb.VersionRefProto{Hash: br.Hash[:], VersionId: br.VersionID})
 	}
 
 	// Serialize to protobuf
@@ -233,9 +257,12 @@ func (k *KV) storeSlice(txn *badger.Txn, slice types.SealedSlice) error {
 func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata types.KvRef) error {
 	// Convert to protobuf
 	protoMetadata := &pb.KvDataHashProto{
-		Key:     metadata.Key[:],
-		Parent:  metadata.Parent[:],
-		Created: metadata.Created,
+		Key:             metadata.Key[:],
+		Parent:          metadata.Parent[:],
+		Created:         metadata.Created,
+		PrevVersionHash: metadata.PrevVersionHash[:],
+		VersionId:       metadata.VersionID,
+		PrevVersionId:   metadata.PrevVersionID,
 	}
 
 	// Convert chunk hashes
@@ -245,6 +272,10 @@ func (k *KV) storeMetadataWithBatch(wb *badger.WriteBatch, metadata types.KvRef)
 
 	for _, alias := range metadata.Aliases {
 		protoMetadata.Aliases = append(protoMetadata.Aliases, alias[:])
+	}
+
+	for _, br := range metadata.Branches {
+		protoMetadata.Branches = append(protoMetadata.Branches, &pb.VersionRefProto{Hash: br.Hash[:], VersionId: br.VersionID})
 	}
 
 	// Serialize to protobuf
@@ -389,8 +420,15 @@ func canonicalDataKeyPayload(data types.Data) []byte {
 	// Include ContentType in the canonical payload so keys vary by content type
 	writeBytesWithLength(&buf, []byte(data.ContentType))
 	buf.Write(data.Parent[:])
+	buf.Write(data.PrevVersionHash[:])
 	buf.WriteByte(data.RSDataSlices)
 	buf.WriteByte(data.RSParitySlices)
+
+	var versionBytes [8]byte
+	binary.BigEndian.PutUint64(versionBytes[:], uint64(data.VersionID))
+	buf.Write(versionBytes[:])
+	binary.BigEndian.PutUint64(versionBytes[:], uint64(data.PrevVersionID))
+	buf.Write(versionBytes[:])
 
 	var createdBytes [8]byte
 	binary.BigEndian.PutUint64(createdBytes[:], uint64(data.Created))
@@ -437,8 +475,21 @@ func (k *KV) BatchWriteData(dataList []types.Data) ([]hash.Hash, error) {
 			return nil, fmt.Errorf("data key must be zero value; it will be generated from content")
 		}
 
+		if len(data.Branches) > 0 {
+			if data.VersionID != 0 || !isEmptyHash(data.PrevVersionHash) {
+				return nil, fmt.Errorf("branches can only be set on original versions (VersionID=0, no previous version)")
+			}
+		}
+
 		if data.Created == 0 {
 			data.Created = time.Now().Unix()
+		}
+		if data.VersionID == 0 {
+			if isEmptyHash(data.PrevVersionHash) {
+				data.VersionID = 0
+			} else {
+				data.VersionID = time.Now().UnixMilli()
+			}
 		}
 
 		data.Key = computeDataKey(data)
@@ -475,9 +526,13 @@ func (k *KV) BatchWriteData(dataList []types.Data) ([]hash.Hash, error) {
 			ChunkHashes:     contentHashes,
 			MetaChunkHashes: metaHashes,
 			Parent:          encoded.Parent,
+			PrevVersionHash: encoded.PrevVersionHash,
 			Created:         encoded.Created,
+			VersionID:       encoded.VersionID,
+			PrevVersionID:   encoded.PrevVersionID,
 			Aliases:         encoded.Aliases,
 			ContentType:     data.ContentType,
+			Branches:        encoded.Branches,
 		}
 		allMetadata = append(allMetadata, metadata)
 		metadataChildren = append(metadataChildren, encoded.Children)
@@ -623,9 +678,13 @@ func (k *KV) encodeDataPipeline(data types.Data) (types.KvData, error) {
 		MetaSlices:      metaSlices,
 		MetaChunkHashes: metaHashes,
 		Parent:          data.Parent,
+		PrevVersionHash: data.PrevVersionHash,
 		Children:        data.Children,
 		Created:         data.Created,
+		VersionID:       data.VersionID,
+		PrevVersionID:   data.PrevVersionID,
 		Aliases:         data.Aliases,
 		ContentType:     data.ContentType,
+		Branches:        data.Branches,
 	}, nil
 }

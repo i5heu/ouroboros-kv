@@ -66,10 +66,14 @@ func (k *KV) ReadData(key hash.Hash) (types.Data, error) {
 			MetaSlices:      metadataSlices,
 			MetaChunkHashes: metadata.MetaChunkHashes,
 			Parent:          metadata.Parent,
+			PrevVersionHash: metadata.PrevVersionHash,
 			Children:        children,
 			Created:         metadata.Created,
+			VersionID:       metadata.VersionID,
+			PrevVersionID:   metadata.PrevVersionID,
 			Aliases:         metadata.Aliases,
 			ContentType:     metadata.ContentType,
+			Branches:        metadata.Branches,
 		}
 
 		// Use decoding pipeline to reconstruct original data
@@ -242,8 +246,14 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (types.KvRef, error) {
 
 	// Convert back to Go struct
 	metadata := types.KvRef{
-		Key:     key, // We already know the key
-		Created: protoMetadata.Created,
+		Key:           key, // We already know the key
+		Created:       protoMetadata.Created,
+		VersionID:     protoMetadata.VersionId,
+		PrevVersionID: protoMetadata.PrevVersionId,
+	}
+
+	if len(protoMetadata.PrevVersionHash) == 64 {
+		copy(metadata.PrevVersionHash[:], protoMetadata.PrevVersionHash)
 	}
 
 	// Convert parent
@@ -266,6 +276,15 @@ func (k *KV) loadMetadata(txn *badger.Txn, key hash.Hash) (types.KvRef, error) {
 			copy(alias[:], aliasBytes)
 			metadata.Aliases = append(metadata.Aliases, alias)
 		}
+	}
+
+	for _, br := range protoMetadata.Branches {
+		var ref types.VersionRef
+		ref.VersionID = br.GetVersionId()
+		if len(br.Hash) == 64 {
+			copy(ref.Hash[:], br.Hash)
+		}
+		metadata.Branches = append(metadata.Branches, ref)
 	}
 
 	metaChunksKey := fmt.Sprintf("%s%x", META_CHUNK_HASH_PREFIX, key)
@@ -460,6 +479,10 @@ func (k *KV) BatchReadData(keys []hash.Hash) ([]types.Data, error) {
 				Children:        children,
 				Created:         metadata.Created,
 				Aliases:         metadata.Aliases,
+				PrevVersionHash: metadata.PrevVersionHash,
+				VersionID:       metadata.VersionID,
+				PrevVersionID:   metadata.PrevVersionID,
+				Branches:        metadata.Branches,
 			}
 
 			// Decode data
@@ -545,6 +568,10 @@ func (k *KV) GetDataInfo(key hash.Hash) (types.DataInfo, error) {
 		// Initialize basic info
 		info.Key = key
 		info.KeyBase64 = base64.StdEncoding.EncodeToString(key[:])
+		info.VersionID = metadata.VersionID
+		info.PrevVersionHash = metadata.PrevVersionHash
+		info.PrevVersionID = metadata.PrevVersionID
+		info.Branches = metadata.Branches
 		info.ChunkHashes = metadata.ChunkHashes
 		info.MetaChunkHashes = metadata.MetaChunkHashes
 		info.NumChunks = len(metadata.ChunkHashes)
@@ -675,15 +702,19 @@ func (k *KV) decodeDataPipeline(kvDataLinked types.KvData) (types.Data, error) {
 	}
 
 	return types.Data{
-		Key:            kvDataLinked.Key,
-		Meta:           metadata,
-		Content:        content,
-		Parent:         kvDataLinked.Parent,
-		Children:       kvDataLinked.Children,
-		RSDataSlices:   rsData,
-		RSParitySlices: rsParity,
-		Created:        kvDataLinked.Created,
-		Aliases:        kvDataLinked.Aliases,
-		ContentType:    kvDataLinked.ContentType,
+		Key:             kvDataLinked.Key,
+		Meta:            metadata,
+		Content:         content,
+		Parent:          kvDataLinked.Parent,
+		PrevVersionHash: kvDataLinked.PrevVersionHash,
+		Children:        kvDataLinked.Children,
+		RSDataSlices:    rsData,
+		RSParitySlices:  rsParity,
+		Created:         kvDataLinked.Created,
+		VersionID:       kvDataLinked.VersionID,
+		PrevVersionID:   kvDataLinked.PrevVersionID,
+		Aliases:         kvDataLinked.Aliases,
+		ContentType:     kvDataLinked.ContentType,
+		Branches:        kvDataLinked.Branches,
 	}, nil
 }

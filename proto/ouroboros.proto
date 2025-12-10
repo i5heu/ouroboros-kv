@@ -11,6 +11,16 @@ message KvDataHashProto {
   bytes parent = 3;                 // Key of the parent chunk
   int64 created = 4;                // Unix timestamp when the data was created
   repeated bytes aliases = 5;       // Aliases for the data
+  bytes prev_version_hash = 6;      // Hash of the previous version (zero for originals)
+  int64 version_id = 7;             // Unix time in milliseconds representing this version (0 for originals)
+  int64 prev_version_id = 8;        // VersionID of the previous version (0 for originals)
+  repeated VersionRefProto branches = 9; // Alternative branch heads from the same ancestor
+}
+
+// VersionRefProto captures a versioned reference with its hash and VersionID
+message VersionRefProto {
+  bytes hash = 1;
+  int64 version_id = 2;
 }
 
 // SliceRecordProto represents a single Reed-Solomon slice persisted in the key-value store

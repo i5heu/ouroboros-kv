@@ -6,20 +6,30 @@ import (
 	"github.com/i5heu/ouroboros-crypt/pkg/hash"
 )
 
+// VersionRef captures a versioned reference with its hash and VersionID.
+type VersionRef struct {
+	Hash      hash.Hash // Key of the referenced version
+	VersionID int64     // Version identifier in milliseconds since epoch (0 for originals)
+}
+
 // Data is the user facing "value" or Data of ouroboros-kv, which contains the content and metadata.
 type Data struct {
 	Key hash.Hash // Key is derived from all fields except Children; must be zero when writing new data because it is generated from the content
 	// Part of the key hash:
-	Content        []byte    // The actual content of the data (stored encrypted)
-	Parent         hash.Hash // Key of the parent value
-	Created        int64     // Unix timestamp when the data was created
-	RSDataSlices   uint8     // Number of Reed-Solomon data slices per stripe (RSDataSlices + RSParitySlices = total slices)
-	RSParitySlices uint8     // Number of Reed-Solomon parity slices per stripe (RSDataSlices + RSParitySlices = total slices)
-	ContentType    string    // ContentType type of the content (not encrypted and is part of the key hash)
+	Content         []byte    // The actual content of the data (stored encrypted)
+	Parent          hash.Hash // Key of the parent value
+	PrevVersionHash hash.Hash // Hash of the immediately previous version (zero hash for originals)
+	Created         int64     // Unix timestamp when the data was created
+	VersionID       int64     // Unix time in milliseconds representing this version; 0 for originals
+	PrevVersionID   int64     // VersionID of the previous version; 0 for originals
+	RSDataSlices    uint8     // Number of Reed-Solomon data slices per stripe (RSDataSlices + RSParitySlices = total slices)
+	RSParitySlices  uint8     // Number of Reed-Solomon parity slices per stripe (RSDataSlices + RSParitySlices = total slices)
+	ContentType     string    // ContentType type of the content (not encrypted and is part of the key hash)
 	// Not part of the key hash:
-	Children []hash.Hash // Keys of the child values (stored dynamically and not part of the key hash)
-	Meta     []byte      // Dynamic additional metadata (stored encrypted but not part of the key hash) for embeddings, labels, etc.
-	Aliases  []hash.Hash // Aliases for the data (not part of the key hash)
+	Children []hash.Hash  // Keys of the child values (stored dynamically and not part of the key hash)
+	Meta     []byte       // Dynamic additional metadata (stored encrypted but not part of the key hash) for embeddings, labels, etc.
+	Aliases  []hash.Hash  // Aliases for the data (not part of the key hash)
+	Branches []VersionRef // Alternative branch heads that share the same original ancestor (only set on originals)
 	// UnencryptedSystemData []UnencryptedSystemData // Unencrypted system data associated (not part of the key hash and not encrypted but very fast to read and write) for stats, distribution info, etc.
 }
 
@@ -31,10 +41,14 @@ type KvData struct {
 	MetaSlices      []SealedSlice // Metadata RSSlices
 	MetaChunkHashes []hash.Hash   // Order of metadata chunk hashes
 	Parent          hash.Hash     // Key of the parent chunk
+	PrevVersionHash hash.Hash     // Hash of the previous version (zero for originals)
 	Children        []hash.Hash   // Keys of the child chunks
 	Created         int64         // Unix timestamp when the data was created
+	VersionID       int64         // Unix time in milliseconds for this version; 0 for originals
+	PrevVersionID   int64         // VersionID of the previous version; 0 for originals
 	Aliases         []hash.Hash   // Aliases for the data
 	ContentType     string        // Content type for the data - IETF RFC 9110 §8.3 https://datatracker.ietf.org/doc/html/rfc9110#section-8.3 (unencrypted)
+	Branches        []VersionRef  // Alternative branch heads that share the same original ancestor (only set on originals)
 }
 
 // SealedSlice represents a single Reed-Solomon slice (data or parity) persisted in the key-value store.
@@ -54,12 +68,16 @@ type SealedSlice struct {
 // KvRef represents the `Data` structure stored in the key-value store, with chunk hashes instead of full content.
 type KvRef struct {
 	Key             hash.Hash
-	ChunkHashes     []hash.Hash // Hash of deduplicated chunks
-	MetaChunkHashes []hash.Hash // Hash of metadata chunks
-	Parent          hash.Hash   // Key of the parent chunk
-	Created         int64       // Unix timestamp when the data was created
-	Aliases         []hash.Hash // Aliases for the data
-	ContentType     string      // ContentType type of the content (stored with ref for quick access)
+	ChunkHashes     []hash.Hash  // Hash of deduplicated chunks
+	MetaChunkHashes []hash.Hash  // Hash of metadata chunks
+	Parent          hash.Hash    // Key of the parent chunk
+	PrevVersionHash hash.Hash    // Previous version hash (zero for originals)
+	Created         int64        // Unix timestamp when the data was created
+	VersionID       int64        // Unix time in milliseconds for this version
+	PrevVersionID   int64        // VersionID of the previous version
+	Aliases         []hash.Hash  // Aliases for the data
+	ContentType     string       // ContentType type of the content (stored with ref for quick access)
+	Branches        []VersionRef // Alternative branch heads that share the same original ancestor (only set on originals)
 }
 
 // Unencrypted system data associated (not part of the key hash and not encrypted but very fast to read and write) for stats, distribution info, etc.
@@ -70,22 +88,26 @@ type KvRef struct {
 
 // DataInfo represents detailed information about stored data
 type DataInfo struct {
-	Key               hash.Hash   // The data key
-	KeyBase64         string      // Base64 encoded key for display
-	ChunkHashes       []hash.Hash // Hashes of all chunks
-	MetaChunkHashes   []hash.Hash // Hashes of all metadata chunks
-	ClearTextSize     uint64      // Original uncompressed data size
-	StorageSize       uint64      // Total size on storage (sum of all slices)
-	MetaClearTextSize uint64      // Metadata clear text size
-	MetaStorageSize   uint64      // Total metadata storage size
-	NumChunks         int         // Number of logical chunks
-	NumSlices         int         // Total number of Reed-Solomon slices
-	MetaNumChunks     int         // Number of metadata chunks
-	MetaNumSlices     int         // Total number of metadata slices
-	RSDataSlices      uint8       // Data slices per chunk
-	RSParitySlices    uint8       // Parity slices per chunk
-	ChunkDetails      []ChunkInfo // Detailed information per chunk
-	MetaData          []byte      // Decoded metadata payload
+	Key               hash.Hash    // The data key
+	KeyBase64         string       // Base64 encoded key for display
+	VersionID         int64        // Version identifier (ms since epoch, 0 for originals)
+	PrevVersionHash   hash.Hash    // Previous version hash if present
+	PrevVersionID     int64        // Previous version identifier
+	Branches          []VersionRef // Other branch heads that share the same original ancestor
+	ChunkHashes       []hash.Hash  // Hashes of all chunks
+	MetaChunkHashes   []hash.Hash  // Hashes of all metadata chunks
+	ClearTextSize     uint64       // Original uncompressed data size
+	StorageSize       uint64       // Total size on storage (sum of all slices)
+	MetaClearTextSize uint64       // Metadata clear text size
+	MetaStorageSize   uint64       // Total metadata storage size
+	NumChunks         int          // Number of logical chunks
+	NumSlices         int          // Total number of Reed-Solomon slices
+	MetaNumChunks     int          // Number of metadata chunks
+	MetaNumSlices     int          // Total number of metadata slices
+	RSDataSlices      uint8        // Data slices per chunk
+	RSParitySlices    uint8        // Parity slices per chunk
+	ChunkDetails      []ChunkInfo  // Detailed information per chunk
+	MetaData          []byte       // Decoded metadata payload
 }
 
 // ChunkInfo represents information about a single chunk and its slices
@@ -108,6 +130,16 @@ type SliceInfo struct {
 // FormatDataInfo returns a human-readable string representation of DataInfo
 func (info DataInfo) FormatDataInfo() string {
 	output := fmt.Sprintf("Data Key: %s\n", info.KeyBase64)
+	output += fmt.Sprintf("Version: %d\n", info.VersionID)
+	if info.PrevVersionID != 0 || !isZeroHash(info.PrevVersionHash) {
+		output += fmt.Sprintf("Previous: %x @ %d\n", info.PrevVersionHash, info.PrevVersionID)
+	}
+	if len(info.Branches) > 0 {
+		output += "Branches:\n"
+		for _, br := range info.Branches {
+			output += fmt.Sprintf("  %x @ %d\n", br.Hash, br.VersionID)
+		}
+	}
 	output += fmt.Sprintf("Clear Text Size: %s (%d bytes)\n", formatBytes(info.ClearTextSize), info.ClearTextSize)
 	output += fmt.Sprintf("Storage Size: %s (%d bytes)\n", formatBytes(info.StorageSize), info.StorageSize)
 	output += fmt.Sprintf("Compression Ratio: %.2fx\n", float64(info.StorageSize)/float64(info.ClearTextSize))
@@ -152,4 +184,9 @@ func formatBytes(bytes uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func isZeroHash(h hash.Hash) bool {
+	var zero hash.Hash
+	return h == zero
 }
